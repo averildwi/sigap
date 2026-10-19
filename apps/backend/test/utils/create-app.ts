@@ -8,6 +8,7 @@ import { LoggerInterceptor } from '../../src/common/interceptors/logger.intercep
 import { TransformInterceptor } from '../../src/common/interceptors/transform.interceptor';
 import { OTP_SENDER, OtpMessage } from '../../src/common/mail/otp-sender';
 import { createValidationPipe } from '../../src/common/pipes/validation.pipe.config';
+import { parseCorsOrigins } from '../../src/recipes/frontend-cors-io.adapter';
 
 /** Codes the app tried to send, newest last. Replaces the real mail adapter. */
 export class CapturingOtpSender {
@@ -42,11 +43,9 @@ export async function createApp(
   const config = app.get(ConfigService);
   app.set('trust proxy', config.getOrThrow<number>('TRUST_PROXY_HOPS'));
   app.setGlobalPrefix('api');
-  const allowedOrigins = config
-    .getOrThrow<string>('FRONTEND_URL')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const allowedOrigins = parseCorsOrigins(
+    config.getOrThrow<string>('FRONTEND_URL'),
+  );
   app.enableCors({ origin: allowedOrigins });
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalInterceptors(

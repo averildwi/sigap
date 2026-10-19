@@ -112,7 +112,7 @@ export class NotificationsService {
    * missing id give the same 404, an already-read id answers as is.
    */
   async markRead(id: string, userId: string): Promise<NotificationRow> {
-    const updated = await this.prisma.notification.updateMany({
+    await this.prisma.notification.updateMany({
       where: { id, userId, readAt: null },
       data: { readAt: new Date() },
     });
@@ -121,10 +121,8 @@ export class NotificationsService {
       where: { id, userId },
       select: notificationSelect,
     });
-    if (updated.count === 0 && !row) {
-      throw new NotFoundException('Notification not found');
-    }
-    return row as NotificationRow;
+    if (!row) throw new NotFoundException('Notification not found');
+    return row;
   }
 
   /** F-NOTIFICATIONS-2 / BR-65: mark-all touches only the caller's rows. */
