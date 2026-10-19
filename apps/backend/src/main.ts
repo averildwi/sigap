@@ -8,6 +8,10 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { LoggerInterceptor } from './common/interceptors/logger.interceptor';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+import {
+  FrontendCorsIoAdapter,
+  parseCorsOrigins,
+} from './recipes/frontend-cors-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -20,15 +24,16 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // Empty FRONTEND_URL means no cross-origin access (never a wildcard).
-  const allowedOrigins = config
-    .getOrThrow<string>('FRONTEND_URL')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const allowedOrigins = parseCorsOrigins(
+    config.getOrThrow<string>('FRONTEND_URL'),
+  );
   app.enableCors({
     origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
+
+  // Socket.IO uses the same CORS allowlist as HTTP (BR-81).
+  app.useWebSocketAdapter(new FrontendCorsIoAdapter(app));
 
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalInterceptors(

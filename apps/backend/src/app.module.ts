@@ -6,10 +6,12 @@ import { AuthModule } from './auth/auth.module';
 import { AppConfigModule } from './common/config/app-config.module';
 import { HashingModule } from './common/hashing/hashing.module';
 import { MailModule } from './common/mail/mail.module';
+import { RealtimeSessionsModule } from './common/realtime/realtime-sessions.module';
 import { projectEnvSchema } from './config/env.schema';
 import { buildThrottlerOptions } from './config/throttle.config';
 import { CommunitiesModule } from './communities/communities.module';
 import { HealthModule } from './health/health.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -17,6 +19,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AppConfigModule.forProject(projectEnvSchema),
     HashingModule,
     MailModule,
+    RealtimeSessionsModule,
     // Named tiers from env (BR-80, deviation L-5).
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
@@ -26,6 +29,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AuthModule,
     CommunitiesModule,
     HealthModule,
+    NotificationsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

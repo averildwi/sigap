@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   OnModuleInit,
   UnauthorizedException,
@@ -10,6 +11,8 @@ import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'node:crypto';
 import { GlobalRole, Prisma } from '../../generated/prisma/client';
 import { HashingService } from '../common/hashing/hashing.service';
+import { SOCKET_SESSIONS } from '../common/realtime/socket-sessions';
+import type { SocketSessions } from '../common/realtime/socket-sessions';
 import type { AuthUser, JwtPayload } from '../common/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -57,6 +60,7 @@ export class AuthService implements OnModuleInit {
     private readonly hashing: HashingService,
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
+    @Inject(SOCKET_SESSIONS) private readonly sessions: SocketSessions,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -178,6 +182,8 @@ export class AuthService implements OnModuleInit {
         select: { id: true },
       }),
     );
+    // The bumped token version invalidates every token; drop open sockets too.
+    this.sessions.disconnectUser(user.id);
   }
 
   async me(userId: string) {
@@ -217,6 +223,8 @@ export class AuthService implements OnModuleInit {
       data: { passwordHash, tokenVersion: { increment: 1 } },
       select: tokenUserSelect,
     });
+    // The old sockets cannot use the re-issued token, so drop them now.
+    this.sessions.disconnectUser(user.id);
     return { accessToken: await this.signToken(updated) };
   }
 
@@ -226,6 +234,7 @@ export class AuthService implements OnModuleInit {
       data: { tokenVersion: { increment: 1 } },
       select: { id: true },
     });
+    this.sessions.disconnectUser(user.id);
   }
 
   private signToken(user: {

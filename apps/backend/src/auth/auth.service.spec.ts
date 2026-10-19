@@ -7,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { HashingService } from '../common/hashing/hashing.service';
+import { SOCKET_SESSIONS } from '../common/realtime/socket-sessions';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
 import { OtpService } from './otp/otp.service';
@@ -19,6 +20,7 @@ describe('AuthService', () => {
   };
   let tx: { user: { create: jest.Mock; update: jest.Mock } };
   let otp: { issue: jest.Mock; consume: jest.Mock };
+  let sessions: { disconnectUser: jest.Mock };
   const hashing = new HashingService();
   const jwt = new JwtService({ secret: 'x'.repeat(32) });
   let passwordHash: string;
@@ -49,6 +51,7 @@ describe('AuthService', () => {
           cb(tx),
       ),
     };
+    sessions = { disconnectUser: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -56,6 +59,7 @@ describe('AuthService', () => {
         { provide: HashingService, useValue: hashing },
         { provide: JwtService, useValue: jwt },
         { provide: OtpService, useValue: otp },
+        { provide: SOCKET_SESSIONS, useValue: sessions },
       ],
     }).compile();
     service = moduleRef.get(AuthService);
@@ -312,6 +316,8 @@ describe('AuthService', () => {
         hashing.verify('nice new password', data.passwordHash),
       ).resolves.toBe(true);
       expect(data.tokenVersion).toEqual({ increment: 1 });
+      // Open sockets die with the token (BR-77/E-39).
+      expect(sessions.disconnectUser).toHaveBeenCalledWith('u1');
     });
 
     it('also marks the email as verified once (E-38)', async () => {
@@ -380,6 +386,8 @@ describe('AuthService', () => {
       ).resolves.toBe(true);
       expect(data.tokenVersion).toEqual({ increment: 1 });
       expect(where).toEqual({ id: 'u1' });
+      // No open socket survives the token bump (BR-77/E-39).
+      expect(sessions.disconnectUser).toHaveBeenCalledWith('u1');
     });
 
     it('rejects a wrong current password with the same error as unknown ids', async () => {
@@ -415,6 +423,8 @@ describe('AuthService', () => {
       ];
       expect(arg.data.tokenVersion).toEqual({ increment: 1 });
       expect(Object.keys(arg.data)).toEqual(['tokenVersion']);
+      // Every device loses both the token and the live socket (BR-77/E-39).
+      expect(sessions.disconnectUser).toHaveBeenCalledWith('u1');
     });
   });
 
