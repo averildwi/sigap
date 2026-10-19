@@ -8,6 +8,7 @@ import { HashingModule } from './common/hashing/hashing.module';
 import { MailModule } from './common/mail/mail.module';
 import { projectEnvSchema } from './config/env.schema';
 import { buildThrottlerOptions } from './config/throttle.config';
+import { CommunitiesModule } from './communities/communities.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -23,6 +24,7 @@ import { PrismaModule } from './prisma/prisma.module';
     }),
     PrismaModule,
     AuthModule,
+    CommunitiesModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
