@@ -1,4 +1,6 @@
+import { ConfigService } from '@nestjs/config';
 import { baseEnvSchema } from '../common/config/base-env.schema';
+import { ConsoleOtpSender } from '../common/mail/console-otp-sender';
 import { projectEnvSchema } from './env.schema';
 
 // Same schema AppConfigModule.forProject(projectEnvSchema) validates at boot.
@@ -81,5 +83,20 @@ describe('env schema', () => {
     expect(
       schema.validate({ ...valid, OTP_SENDER: 'smtp' }).error,
     ).toBeDefined();
+  });
+});
+
+describe('ConsoleOtpSender', () => {
+  const config = (nodeEnv: string) =>
+    ({ getOrThrow: () => nodeEnv }) as unknown as ConfigService;
+
+  it('refuses to start in production', () => {
+    expect(() => new ConsoleOtpSender(config('production'))).toThrow(
+      'OTP_SENDER=console is not allowed in production',
+    );
+  });
+
+  it('starts in development', () => {
+    expect(() => new ConsoleOtpSender(config('development'))).not.toThrow();
   });
 });
