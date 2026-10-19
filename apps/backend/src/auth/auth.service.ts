@@ -207,7 +207,8 @@ export class AuthService implements OnModuleInit {
       found?.passwordHash ?? this.dummyHash,
     );
     if (!found?.passwordHash || !passwordOk) {
-      throw new UnauthorizedException('Current password is incorrect');
+      // 400, not 401: the session is valid, only the field is wrong.
+      throw new BadRequestException('Current password is incorrect');
     }
     const passwordHash = await this.hashing.hash(newPassword);
     // BR-5: change-password invalidates every token and re-issues one.
