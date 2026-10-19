@@ -29,7 +29,11 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     prisma = {
-      user: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+      user: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn().mockResolvedValue(user()),
+      },
       $transaction: jest.fn((cb: (client: typeof tx) => unknown) => cb(tx)),
     };
     tx = {
@@ -348,6 +352,69 @@ describe('AuthService', () => {
           newPassword: 'nice new password',
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('AuthService.changePassword', () => {
+    it('verifies the current password, bumps tokenVersion and returns a fresh token', async () => {
+      prisma.user.findUnique.mockResolvedValue(user({ tokenVersion: 2 }));
+      prisma.user.update.mockResolvedValue(user({ tokenVersion: 3 }));
+      const { accessToken } = await service.changePassword(
+        { id: 'u1', email: 'a@x.com', role: 'USER' },
+        { currentPassword: 'correct horse', newPassword: 'brand new horse' },
+      );
+      const claims = jwt.decode<Record<string, unknown>>(accessToken) ?? {};
+      expect(claims).toMatchObject({ sub: 'u1', email: 'a@x.com', tv: 3 });
+      const [findFirst] = prisma.user.findUnique.mock.calls[0] as unknown as [
+        { where: { id: string } },
+      ];
+      expect(findFirst.where).toEqual({ id: 'u1' });
+      const [{ where, data }] = prisma.user.update.mock.calls[0] as unknown as [
+        {
+          where: { id: string };
+          data: { passwordHash: string; tokenVersion: unknown };
+        },
+      ];
+      await expect(
+        hashing.verify('brand new horse', data.passwordHash),
+      ).resolves.toBe(true);
+      expect(data.tokenVersion).toEqual({ increment: 1 });
+      expect(where).toEqual({ id: 'u1' });
+    });
+
+    it('rejects a wrong current password with the same error as unknown ids', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(user());
+      const unknown = await service
+        .changePassword(
+          { id: 'u1', email: 'a@x.com', role: 'USER' },
+          { currentPassword: 'correct horse', newPassword: 'brand new horse' },
+        )
+        .catch((e: unknown) => e);
+      const wrong = await service
+        .changePassword(
+          { id: 'u1', email: 'a@x.com', role: 'USER' },
+          { currentPassword: 'wrong horse', newPassword: 'brand new horse' },
+        )
+        .catch((e: unknown) => e);
+      expect(unknown).toBeInstanceOf(UnauthorizedException);
+      expect(wrong).toBeInstanceOf(UnauthorizedException);
+      expect((unknown as Error).message).toBe((wrong as Error).message);
+    });
+  });
+
+  describe('AuthService.logoutAll', () => {
+    it('bumps tokenVersion so every issued token dies (BR-5)', async () => {
+      await service.logoutAll({ id: 'u1', email: 'a@x.com', role: 'USER' });
+      const [arg] = prisma.user.update.mock.calls[0] as unknown as [
+        {
+          data: { tokenVersion: unknown };
+          select: Record<string, unknown>;
+        },
+      ];
+      expect(arg.data.tokenVersion).toEqual({ increment: 1 });
+      expect(Object.keys(arg.data)).toEqual(['tokenVersion']);
     });
   });
 

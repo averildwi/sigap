@@ -10,8 +10,9 @@ import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'node:crypto';
 import { GlobalRole, Prisma } from '../../generated/prisma/client';
 import { HashingService } from '../common/hashing/hashing.service';
-import type { JwtPayload } from '../common/types/auth-user';
+import type { AuthUser, JwtPayload } from '../common/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RequestCodeDto } from './dto/request-code.dto';
@@ -186,6 +187,44 @@ export class AuthService implements OnModuleInit {
     });
     if (!user) throw new UnauthorizedException();
     return user;
+  }
+
+  /** Returns a fresh token: the caller logs in again on every device otherwise. */
+  async changePassword(
+    user: AuthUser,
+    { currentPassword, newPassword }: ChangePasswordDto,
+  ): Promise<{ accessToken: string }> {
+    const found = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        ...tokenUserSelect,
+        passwordHash: true,
+        emailVerifiedAt: true,
+      },
+    });
+    const passwordOk = await this.hashing.verify(
+      currentPassword,
+      found?.passwordHash ?? this.dummyHash,
+    );
+    if (!found?.passwordHash || !passwordOk) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+    const passwordHash = await this.hashing.hash(newPassword);
+    // BR-5: change-password invalidates every token and re-issues one.
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+      select: tokenUserSelect,
+    });
+    return { accessToken: await this.signToken(updated) };
+  }
+
+  async logoutAll(user: AuthUser): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { tokenVersion: { increment: 1 } },
+      select: { id: true },
+    });
   }
 
   private signToken(user: {

@@ -12,8 +12,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { MessageResponse } from '../common/interceptors/transform.interceptor';
+import type { AuthUser } from '../common/types/auth-user';
 import { AuthService } from './auth.service';
 import { ThrottleTier } from '../config/throttle-tier.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RequestCodeDto } from './dto/request-code.dto';
@@ -93,5 +95,33 @@ export class AuthController {
   @ApiOperation({ summary: '[AUTH] Get my profile' })
   me(@CurrentUser('id') userId: string) {
     return this.authService.me(userId);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ThrottleTier('auth')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: '[AUTH] Change my password and invalidate other sessions',
+  })
+  async changePassword(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return new MessageResponse(
+      await this.authService.changePassword(user, dto),
+      'Password changed',
+    );
+  }
+
+  @Post('logout-all')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: '[AUTH] Invalidate every issued token' })
+  async logoutAll(@CurrentUser() user: AuthUser) {
+    await this.authService.logoutAll(user);
+    return new MessageResponse(null, 'Logged out on every device');
   }
 }
