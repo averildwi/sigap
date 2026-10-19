@@ -398,8 +398,8 @@ describe('AuthService', () => {
           { currentPassword: 'wrong horse', newPassword: 'brand new horse' },
         )
         .catch((e: unknown) => e);
-      expect(unknown).toBeInstanceOf(UnauthorizedException);
-      expect(wrong).toBeInstanceOf(UnauthorizedException);
+      expect(unknown).toBeInstanceOf(BadRequestException);
+      expect(wrong).toBeInstanceOf(BadRequestException);
       expect((unknown as Error).message).toBe((wrong as Error).message);
     });
   });

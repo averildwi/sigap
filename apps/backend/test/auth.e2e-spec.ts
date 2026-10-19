@@ -147,6 +147,18 @@ describe('Auth (e2e, real database)', () => {
     await login(email, 'another pass 1').expect(200);
   });
 
+  it('change-password answers 400 for a wrong current password', async () => {
+    const { token } = await registerVerified();
+    await request(http)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        currentPassword: 'definitely wrong',
+        newPassword: 'another pass',
+      })
+      .expect(400);
+  });
+
   it('logout-all ends every token of the user', async () => {
     const { token } = await registerVerified();
     await request(http)
