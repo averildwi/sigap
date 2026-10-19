@@ -1,8 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
+import type { Server } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtStrategy } from '../auth/strategies/jwt.strategy';
+import { SocketSessionsRegistry } from '../common/realtime/socket-sessions.registry';
 import { AuthedSocket, RealtimeGateway } from './realtime.gateway';
 
 interface GatewayClient {
@@ -54,6 +56,7 @@ describe('RealtimeGateway.handleConnection', () => {
         { provide: JwtService, useValue: jwt },
         // JWT guard reused (BR-77): no second, weaker handshake check.
         JwtStrategy,
+        SocketSessionsRegistry,
         { provide: PrismaService, useValue: prisma },
         {
           provide: ConfigService,
@@ -128,6 +131,7 @@ describe('RealtimeGateway.emitToUsers', () => {
     gateway = new RealtimeGateway(
       { verifyAsync: jest.fn() } as unknown as JwtService,
       {} as unknown as JwtStrategy,
+      new SocketSessionsRegistry(),
     );
     installServer();
   });
@@ -149,5 +153,24 @@ describe('RealtimeGateway.emitToUsers', () => {
     gateway.emitToUsers([], 'sos:new', {});
 
     expect(server.to).not.toHaveBeenCalled();
+  });
+});
+
+describe('RealtimeGateway.afterInit', () => {
+  it('binds the running server so auth can drop open sockets (BR-77)', () => {
+    const sessions = new SocketSessionsRegistry();
+    const gateway = new RealtimeGateway(
+      { verifyAsync: jest.fn() } as unknown as JwtService,
+      {} as unknown as JwtStrategy,
+      sessions,
+    );
+    const realtime = {
+      in: jest.fn(() => ({ disconnectSockets: jest.fn() })),
+    };
+
+    gateway.afterInit(realtime as unknown as Server);
+    sessions.disconnectUser('u1');
+
+    expect(realtime.in).toHaveBeenCalledWith('user:u1');
   });
 });
