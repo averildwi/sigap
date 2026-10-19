@@ -1,11 +1,31 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtModule, JwtSignOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { OtpService } from './otp/otp.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
-  imports: [PassportModule],
-  providers: [JwtStrategy],
-  // A WebSocket gateway reuses the same checks (BR-77).
-  exports: [JwtStrategy],
+  imports: [
+    PassportModule,
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow<string>('JWT_SECRET'),
+        signOptions: {
+          // Joi validates it as a string; jsonwebtoken types want ms' StringValue.
+          expiresIn: config.getOrThrow<string>(
+            'JWT_EXPIRES_IN',
+          ) as JwtSignOptions['expiresIn'],
+        },
+      }),
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, OtpService, JwtStrategy],
+  // A WebSocket gateway reuses the same signer and checks (BR-77).
+  exports: [JwtModule, JwtStrategy],
 })
 export class AuthModule {}
