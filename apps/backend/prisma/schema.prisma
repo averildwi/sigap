@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider     = "prisma-client"
   output       = "../generated/prisma"
@@ -10,5 +5,269 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "postgresql" // url comes from prisma.config.ts (Prisma 7)
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Enums â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+enum OtpPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum GlobalRole {
+  ADMIN
+  USER
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  LEFT
+  REMOVED
+}
+
+enum MembershipRole {
+  ADMIN
+  WARGA
+}
+
+enum ReportCategory {
+  INFRASTRUCTURE
+  SECURITY
+  CLEANLINESS
+  SOCIAL
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+enum SosType {
+  MEDICAL
+  FIRE
+  CRIME
+  OTHER
+}
+
+enum SosStatus {
+  SENT
+  ACCEPTED
+  HANDLING
+  RESOLVED
+  CANCELLED
+  FALSE_ALARM
+}
+
+enum NotificationType {
+  JOIN_REQUEST
+  JOIN_APPROVED
+  JOIN_REJECTED
+  ANNOUNCEMENT
+  REPORT_NEW
+  REPORT_STATUS
+  SOS_NEW
+  SOS_ACCEPTED
+  SOS_RESOLVED
+}
+
+enum EntityType {
+  MEMBERSHIP
+  ANNOUNCEMENT
+  REPORT
+  SOS_ALERT
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Accounts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  email           String     @unique // lowercased + trimmed by the DTO
+  passwordHash    String
+  name            String
+  phone           String? // normalised +628... (BR-9)
+  globalRole      GlobalRole @default(USER) // no Lite endpoint grants ADMIN (N-1)
+  isActive        Boolean    @default(true) // false + tokenVersion+1 = disabled (BR-3, E-41)
+  emailVerifiedAt DateTime? // null = not verified yet (BR-3)
+  tokenVersion    Int        @default(0) // +1 revokes every access token (BR-5)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  otpCodes         OtpCode[]
+  memberships      Membership[]   @relation("MembershipUser")
+  announcements    Announcement[]
+  reports          Report[]       @relation("ReportReporter")
+  respondedReports Report[]       @relation("ReportResponder")
+  sentSosAlerts    SosAlert[]     @relation("SosSender")
+  handledSosAlerts SosAlert[]     @relation("SosHandler")
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model OtpCode {
+  id        String     @id @default(uuid()) @db.Uuid
+  userId    String     @db.Uuid
+  purpose   OtpPurpose
+  codeHash  String
+  attempts  Int        @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt])
+  @@map("otp_codes")
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Communities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+model Community {
+  id        String   @id @default(uuid()) @db.Uuid
+  rt        Int
+  rw        Int
+  province  String
+  city      String
+  district  String
+  village   String
+  name      String?
+  regionKey String   @unique // BR-12
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships   Membership[]
+  announcements Announcement[]
+  reports       Report[]
+  sosAlerts     SosAlert[]
+  notifications Notification[]
+
+  @@index([rt, rw])
+  @@map("communities")
+}
+
+model Membership {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  communityId String           @db.Uuid
+  status      MembershipStatus @default(PENDING)
+  role        MembershipRole   @default(WARGA)
+  houseBlock  String
+  requestedAt DateTime // latest join request (N-6)
+  decidedAt   DateTime?
+  joinedAt    DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user      User      @relation("MembershipUser", fields: [userId], references: [id], onDelete: Restrict)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, communityId])
+  @@index([communityId, status, requestedAt])
+  @@index([communityId, status, role])
+  @@index([userId, status])
+  @@map("memberships")
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+model Announcement {
+  id          String   @id @default(uuid()) @db.Uuid
+  communityId String   @db.Uuid
+  authorId    String   @db.Uuid
+  title       String
+  body        String
+  isHighlight Boolean  @default(false) // at most one true per community (BR-36, N-3)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([communityId, isHighlight, createdAt])
+  @@map("announcements")
+}
+
+model Report {
+  id            String         @id @default(uuid()) @db.Uuid
+  communityId   String         @db.Uuid
+  reporterId    String         @db.Uuid
+  title         String
+  description   String
+  category      ReportCategory
+  status        ReportStatus   @default(PENDING)
+  responseNote  String?
+  respondedById String?        @db.Uuid
+  respondedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  reporter    User      @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  respondedBy User?     @relation("ReportResponder", fields: [respondedById], references: [id], onDelete: Restrict)
+
+  @@index([communityId, status, createdAt])
+  @@index([communityId, reporterId, createdAt])
+  @@map("reports")
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ SOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+model SosAlert {
+  id                 String    @id @default(uuid()) @db.Uuid
+  communityId        String    @db.Uuid
+  senderId           String    @db.Uuid
+  handlerId          String?   @db.Uuid
+  type               SosType
+  note               String?
+  latitude           Float?
+  longitude          Float?
+  houseBlockSnapshot String // BR-54
+  status             SosStatus @default(SENT)
+  recipientCount     Int // BR-62
+  resolutionNote     String? // optional note on resolve / false alarm
+  acceptedAt         DateTime?
+  handlingAt         DateTime?
+  closedAt           DateTime?
+  escalatedAt        DateTime? // Stretch only (F-SOS-7, N-10)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  sender    User      @relation("SosSender", fields: [senderId], references: [id], onDelete: Restrict)
+  handler   User?     @relation("SosHandler", fields: [handlerId], references: [id], onDelete: Restrict)
+
+  @@index([communityId, status, createdAt])
+  @@index([communityId, senderId, status])
+  @@index([status, createdAt]) // stretch escalation scan
+  @@map("sos_alerts")
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  communityId String?          @db.Uuid
+  type        NotificationType
+  title       String
+  body        String
+  entityType  EntityType?
+  entityId    String?          @db.Uuid // no FK (N-8)
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([entityType, entityId])
+  @@map("notifications")
 }
