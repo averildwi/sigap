@@ -56,19 +56,10 @@ export const INVALID_CODE_MESSAGE = 'Invalid or expired code';
 export const ALREADY_MEMBER_MESSAGE =
   'You already have a request or membership in this community';
 
-/** Payload of `join-request:new` after a join request was created (BR-69). */
+/** Payload of `join-request:new` (API_SPEC 8). */
 export interface JoinRequestEvent {
-  id: string;
-  user: { id: string; name: string; email: string };
-  houseBlock: string;
-  requestedAt: Date;
-}
-
-/** Payload of `notification:new` for a fresh notification (BR-69). */
-export interface NotificationEvent {
-  type: NotificationType;
-  communityId: string | null;
-  entityId: string | null;
+  communityId: string;
+  membershipId: string;
 }
 
 /** The join QR as GET /communities/:communityId/join-qr answers it (API_SPEC 4). */
@@ -226,14 +217,13 @@ export class MembershipsService {
 
       const membership =
         reused.count === 1
-          ? await tx.membership.findUnique({
+          ? await tx.membership.findUniqueOrThrow({
               where: {
                 userId_communityId: { userId, communityId: dto.communityId },
               },
               select: membershipViewSelect,
             })
           : await this.createMembership(tx, dto, userId, now);
-      if (!membership) throw new BadRequestException(INVALID_CODE_MESSAGE);
 
       // Only the request that changed a row notifies the admins (BR-23, E-8).
       const requester = await tx.user.findUnique({
@@ -248,7 +238,7 @@ export class MembershipsService {
         },
         select: { userId: true },
       });
-      await this.notifications.createMany(tx, {
+      const createdNotifications = await this.notifications.createMany(tx, {
         userIds: admins.map((admin) => admin.userId),
         communityId: dto.communityId,
         type: 'JOIN_REQUEST',
@@ -262,31 +252,24 @@ export class MembershipsService {
       return {
         membership,
         community,
-        requester,
         adminIds: admins.map((admin) => admin.userId),
+        createdNotifications,
       };
     });
 
-    // After the commit (BR-69): the admin queue refreshes and the badge pops.
+    // After the commit (BR-69): the admin queue refreshes and each badge pops.
     this.realtime.emitToUsers(result.adminIds, REALTIME_EVENTS.joinRequestNew, {
-      id: result.membership.id,
-      user: {
-        id: result.requester?.id ?? userId,
-        name: result.requester?.name ?? '',
-        email: result.requester?.email ?? '',
-      },
-      houseBlock: result.membership.houseBlock,
-      requestedAt: result.membership.requestedAt,
+      communityId: dto.communityId,
+      membershipId: result.membership.id,
     } satisfies JoinRequestEvent);
-    this.realtime.emitToUsers(
-      result.adminIds,
-      REALTIME_EVENTS.notificationNew,
-      {
-        type: 'JOIN_REQUEST',
-        communityId: dto.communityId,
-        entityId: result.membership.id,
-      } satisfies NotificationEvent,
-    );
+    for (const notification of result.createdNotifications) {
+      const { userId: recipientId, ...view } = notification;
+      this.realtime.emitToUsers(
+        [recipientId],
+        REALTIME_EVENTS.notificationNew,
+        view,
+      );
+    }
 
     return {
       membership: toMembershipView(result.membership),
@@ -328,11 +311,10 @@ export class MembershipsService {
    */
   async getJoinQr(communityId: string, userId: string): Promise<JoinQrView> {
     await assertAdmin(this.prisma, userId, communityId);
-    const community = await this.prisma.community.findUnique({
+    const community = await this.prisma.community.findUniqueOrThrow({
       where: { id: communityId },
       select: communitySelect,
     });
-    if (!community) throw new NotFoundException('Community not found');
     const now = new Date();
     const token = createJoinToken(communityId, this.joinTokenSecret(), now);
     return {
@@ -421,13 +403,12 @@ export class MembershipsService {
     type: NotificationType,
   ): Promise<MembershipViewWithUser> {
     const now = new Date();
-    const membership = await this.prisma.$transaction(async (tx) => {
+    const decision = await this.prisma.$transaction(async (tx) => {
       await assertAdmin(tx, adminUserId, communityId);
-      const community = await tx.community.findUnique({
+      const community = await tx.community.findUniqueOrThrow({
         where: { id: communityId },
         select: communitySelect,
       });
-      if (!community) throw new NotFoundException('Community not found');
 
       const updated = await tx.membership.updateMany({
         where: { id: membershipId, communityId, status: 'PENDING' },
@@ -449,32 +430,32 @@ export class MembershipsService {
         throw new BadRequestException(NOT_PENDING_MESSAGE);
       }
 
-      const decidedMembership = await tx.membership.findUnique({
+      const decidedMembership = await tx.membership.findUniqueOrThrow({
         where: { id: membershipId },
         select: membershipUserSelect,
       });
-      if (!decidedMembership) {
-        throw new NotFoundException(JOIN_REQUEST_NOT_FOUND_MESSAGE);
-      }
-      await this.notifications.createMany(tx, {
+      const createdNotifications = await this.notifications.createMany(tx, {
         userIds: [decidedMembership.user.id],
         communityId,
         type,
         entityId: membershipId,
         context: { label: formatLabel(community.rt, community.rw) },
       });
-      return decidedMembership;
+      return { membership: decidedMembership, createdNotifications };
     });
 
     // After the commit (BR-69): the requester gets the decision in-app.
-    this.realtime.emitToUsers(
-      [membership.user.id],
-      REALTIME_EVENTS.notificationNew,
-      { type, communityId, entityId: membershipId } satisfies NotificationEvent,
-    );
+    for (const notification of decision.createdNotifications) {
+      const { userId: recipientId, ...view } = notification;
+      this.realtime.emitToUsers(
+        [recipientId],
+        REALTIME_EVENTS.notificationNew,
+        view,
+      );
+    }
     return {
-      ...toMembershipView(membership),
-      user: membership.user,
+      ...toMembershipView(decision.membership),
+      user: decision.membership.user,
     };
   }
 

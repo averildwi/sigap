@@ -39,6 +39,13 @@ const COMMUNITY_ID = '3f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
 const USER_ID = '4f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
 const NOW = new Date('2026-10-19T08:05:00Z');
 
+/** NotificationView as emitted: the row minus the routing field. */
+const withoutRecipient = (row: Record<string, unknown>) => {
+  const view = { ...row };
+  delete view.userId;
+  return view;
+};
+
 const COMMUNITY_ROW = {
   id: COMMUNITY_ID,
   rt: 1,
@@ -58,7 +65,7 @@ interface TxMock {
   membership: {
     updateMany: jest.Mock;
     create: jest.Mock;
-    findUnique: jest.Mock;
+    findUniqueOrThrow: jest.Mock;
     findMany: jest.Mock;
   };
   user: { findUnique: jest.Mock };
@@ -154,6 +161,19 @@ describe('MembershipsService.join', () => {
       houseBlock: ' Blok C2 No. 14 ',
     });
 
+  const notificationRow = (userId: string) => ({
+    id: `notification-${userId}`,
+    type: 'JOIN_REQUEST',
+    title: 'Permintaan bergabung baru',
+    body: 'Budi (Blok C2 No. 14) ingin bergabung ke RT001/RW006.',
+    communityId: COMMUNITY_ID,
+    entityType: 'MEMBERSHIP',
+    entityId: 'membership-1',
+    readAt: null,
+    createdAt: NOW,
+    userId,
+  });
+
   beforeEach(async () => {
     tx = {
       community: { findUnique: jest.fn().mockResolvedValue(COMMUNITY_ROW) },
@@ -169,7 +189,7 @@ describe('MembershipsService.join', () => {
           decidedAt: null,
           joinedAt: null,
         }),
-        findUnique: jest.fn().mockResolvedValue({
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
           id: 'membership-2',
           communityId: COMMUNITY_ID,
           status: 'PENDING',
@@ -197,7 +217,14 @@ describe('MembershipsService.join', () => {
         cb(tx),
       ),
     };
-    notifications = { createMany: jest.fn() };
+    notifications = {
+      createMany: jest
+        .fn()
+        .mockResolvedValue([
+          notificationRow('admin-1'),
+          notificationRow('admin-2'),
+        ]),
+    };
     realtime = { emitToUsers: jest.fn() };
     const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
 
@@ -329,26 +356,25 @@ describe('MembershipsService.join', () => {
       houseBlock: 'Blok C2 No. 14',
       label: formatLabel(1, 6),
     });
-    // After the commit: both realtime events go to the admins only (BR-69).
-    expect(realtime.emitToUsers).toHaveBeenCalledTimes(2);
+    // After the commit: the queue event plus one event per admin (BR-69).
+    expect(realtime.emitToUsers).toHaveBeenCalledTimes(3);
     expect(realtime.emitToUsers).toHaveBeenNthCalledWith(
       1,
       ['admin-1', 'admin-2'],
       'join-request:new',
-      expect.objectContaining({
-        id: 'membership-1',
-        houseBlock: 'Blok C2 No. 14',
-      }),
+      { communityId: COMMUNITY_ID, membershipId: 'membership-1' },
     );
     expect(realtime.emitToUsers).toHaveBeenNthCalledWith(
       2,
-      ['admin-1', 'admin-2'],
+      ['admin-1'],
       'notification:new',
-      {
-        type: 'JOIN_REQUEST',
-        communityId: COMMUNITY_ID,
-        entityId: 'membership-1',
-      },
+      withoutRecipient(notificationRow('admin-1')),
+    );
+    expect(realtime.emitToUsers).toHaveBeenNthCalledWith(
+      3,
+      ['admin-2'],
+      'notification:new',
+      withoutRecipient(notificationRow('admin-2')),
     );
   });
 });
@@ -401,13 +427,15 @@ describe('MembershipsService.getJoinQr', () => {
   let service: MembershipsService;
   let prisma: {
     membership: { findFirst: jest.Mock };
-    community: { findUnique: jest.Mock };
+    community: { findUniqueOrThrow: jest.Mock };
   };
 
   beforeEach(async () => {
     prisma = {
       membership: { findFirst: jest.fn() },
-      community: { findUnique: jest.fn().mockResolvedValue(COMMUNITY_ROW) },
+      community: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue(COMMUNITY_ROW),
+      },
     };
     const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
 
@@ -429,7 +457,7 @@ describe('MembershipsService.getJoinQr', () => {
     await expect(service.getJoinQr(COMMUNITY_ID, USER_ID)).rejects.toEqual(
       new ForbiddenException('You are not a member of this community'),
     );
-    expect(prisma.community.findUnique).not.toHaveBeenCalled();
+    expect(prisma.community.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 
   it('answers 403 for a member without the ADMIN role (BR-32)', async () => {
@@ -442,7 +470,7 @@ describe('MembershipsService.getJoinQr', () => {
     await expect(service.getJoinQr(COMMUNITY_ID, USER_ID)).rejects.toEqual(
       new ForbiddenException('Admin access required'),
     );
-    expect(prisma.community.findUnique).not.toHaveBeenCalled();
+    expect(prisma.community.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 
   it('returns the QR of the current window (F-MEMBERSHIPS-1, BR-19)', async () => {
@@ -575,9 +603,10 @@ describe('MembershipsService.approve / reject', () => {
     membership: {
       updateMany: jest.Mock;
       findUnique: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
       findFirst: jest.Mock;
     };
-    community: { findUnique: jest.Mock };
+    community: { findUniqueOrThrow: jest.Mock };
   };
   let prisma: { $transaction: jest.Mock };
   let notifications: { createMany: jest.Mock };
@@ -595,6 +624,18 @@ describe('MembershipsService.approve / reject', () => {
     joinedAt: NOW,
     user: requesterUser(),
   });
+  const notificationRow = (type: string) => ({
+    id: 'notification-1',
+    type,
+    title: 'Permintaan bergabung',
+    body: 'Keputusan permintaan bergabungmu sudah tersedia.',
+    communityId: COMMUNITY_ID,
+    entityType: 'MEMBERSHIP',
+    entityId: 'membership-1',
+    readAt: null,
+    createdAt: NOW,
+    userId: USER_ID,
+  });
 
   beforeEach(async () => {
     tx = {
@@ -602,13 +643,16 @@ describe('MembershipsService.approve / reject', () => {
       membership: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUnique: jest.fn().mockImplementation(activeRow),
+        findUniqueOrThrow: jest.fn().mockImplementation(activeRow),
         findFirst: jest.fn().mockResolvedValue({
           id: 'm-admin',
           role: 'ADMIN',
           status: 'ACTIVE',
         }),
       },
-      community: { findUnique: jest.fn().mockResolvedValue(COMMUNITY_ROW) },
+      community: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue(COMMUNITY_ROW),
+      },
     };
     prisma = {
       // Interactive transaction: run the callback with the mocked tx client.
@@ -616,7 +660,12 @@ describe('MembershipsService.approve / reject', () => {
         cb(tx),
       ),
     };
-    notifications = { createMany: jest.fn() };
+    notifications = {
+      createMany: jest.fn().mockImplementation((...args: unknown[]) => {
+        const input = args[1] as { type: string };
+        return Promise.resolve([notificationRow(input.type)]);
+      }),
+    };
     realtime = { emitToUsers: jest.fn() };
     const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
 
@@ -707,20 +756,17 @@ describe('MembershipsService.approve / reject', () => {
       context: { label: 'RT001/RW006' },
     });
     // After the commit: the in-app event reaches the requester only (BR-69).
+    expect(realtime.emitToUsers).toHaveBeenCalledTimes(1);
     expect(realtime.emitToUsers).toHaveBeenCalledWith(
       [USER_ID],
       'notification:new',
-      {
-        type: 'JOIN_APPROVED',
-        communityId: COMMUNITY_ID,
-        entityId: 'membership-1',
-      },
+      withoutRecipient(notificationRow('JOIN_APPROVED')),
     );
   });
 
   it('rejects to REJECTED WARGA without touching joinedAt (BR-25)', async () => {
-    // The re-read after the conditional update mirrors the new status.
-    tx.membership.findUnique.mockResolvedValue({
+    // The row re-read after the conditional update mirrors the new status.
+    tx.membership.findUniqueOrThrow.mockResolvedValue({
       ...activeRow(),
       status: 'REJECTED',
     });
@@ -747,14 +793,11 @@ describe('MembershipsService.approve / reject', () => {
       tx,
       expect.objectContaining({ type: 'JOIN_REJECTED', userIds: [USER_ID] }),
     );
+    expect(realtime.emitToUsers).toHaveBeenCalledTimes(1);
     expect(realtime.emitToUsers).toHaveBeenCalledWith(
       [USER_ID],
       'notification:new',
-      {
-        type: 'JOIN_REJECTED',
-        communityId: COMMUNITY_ID,
-        entityId: 'membership-1',
-      },
+      withoutRecipient(notificationRow('JOIN_REJECTED')),
     );
   });
 });

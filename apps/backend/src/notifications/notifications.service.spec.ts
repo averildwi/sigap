@@ -5,12 +5,13 @@ import { validateSync } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   NotificationsService,
+  createdNotificationSelect,
   notificationSelect,
 } from './notifications.service';
 import { QueryNotificationsDto } from './dto/query-notifications.dto';
 
 interface TxMock {
-  notification: { createMany: jest.Mock };
+  notification: { createManyAndReturn: jest.Mock };
 }
 
 const NOTIFICATION_ROW = {
@@ -25,13 +26,23 @@ const NOTIFICATION_ROW = {
   createdAt: new Date('2026-10-19T08:00:00Z'),
 };
 
+const createdRow = (userId: string) => ({
+  ...NOTIFICATION_ROW,
+  id: `notification-${userId}`,
+  userId,
+});
+
 describe('NotificationsService.createMany', () => {
   let service: NotificationsService;
   let tx: TxMock;
 
   beforeEach(async () => {
     tx = {
-      notification: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      notification: {
+        createManyAndReturn: jest
+          .fn()
+          .mockResolvedValue([createdRow('admin-1'), createdRow('admin-2')]),
+      },
     };
     const prisma = { $transaction: jest.fn() };
 
@@ -45,7 +56,7 @@ describe('NotificationsService.createMany', () => {
   });
 
   it('writes one row per recipient with the text from the template fn', async () => {
-    await service.createMany(tx, {
+    const rows = await service.createMany(tx, {
       userIds: ['admin-1', 'admin-2'],
       communityId: 'community-1',
       type: 'JOIN_REQUEST',
@@ -57,7 +68,7 @@ describe('NotificationsService.createMany', () => {
       },
     });
 
-    expect(tx.notification.createMany).toHaveBeenCalledWith({
+    expect(tx.notification.createManyAndReturn).toHaveBeenCalledWith({
       data: [
         {
           userId: 'admin-1',
@@ -78,11 +89,16 @@ describe('NotificationsService.createMany', () => {
           entityId: 'membership-1',
         },
       ],
+      select: createdNotificationSelect,
     });
+    // The recipient is on the row so the caller can route the event.
+    expect(rows).toEqual([createdRow('admin-1'), createdRow('admin-2')]);
+    expect(createdNotificationSelect).toMatchObject({ userId: true });
+    expect(createdNotificationSelect).toMatchObject(notificationSelect);
   });
 
   it('writes nothing without recipients (an admin list can be empty)', async () => {
-    await service.createMany(tx, {
+    const rows = await service.createMany(tx, {
       userIds: [],
       communityId: 'community-1',
       type: 'JOIN_REQUEST',
@@ -94,7 +110,8 @@ describe('NotificationsService.createMany', () => {
       },
     });
 
-    expect(tx.notification.createMany).not.toHaveBeenCalled();
+    expect(tx.notification.createManyAndReturn).not.toHaveBeenCalled();
+    expect(rows).toEqual([]);
   });
 });
 
