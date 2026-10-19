@@ -1,13 +1,20 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { buildRegionKey } from '../common/helpers/region-key.helper';
 import { formatLabel } from '../common/helpers/format-label.helper';
+import { assertMember } from '../common/helpers/community-access.helper';
+import { paginate, PaginatedResult } from '../common/helpers/paginate.helper';
 import type {
   MembershipView,
   CommunitySummary,
 } from '../common/helpers/community-view.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommunityDto } from './dto/create-community.dto';
+import { QueryMyCommunitiesDto } from './dto/query-my-communities.dto';
 
 export const COMMUNITY_EXISTS_MESSAGE =
   'Community already registered, join with its QR code';
@@ -123,5 +130,76 @@ export class CommunitiesService {
       }
       throw error;
     }
+  }
+
+  /**
+   * F-COMMUNITIES-2 / F-MEMBERSHIPS-7: every community the user has a row
+   * for, with its role and status. ACTIVE and PENDING first is the
+   * MembershipStatus declaration order of PostgreSQL (PENDING before
+   * ACTIVE), everything decided after; latest reused row first.
+   */
+  async findMine(
+    query: QueryMyCommunitiesDto,
+    userId: string,
+  ): Promise<
+    PaginatedResult<{ community: CommunitySummary; membership: MembershipView }>
+  > {
+    const where: Prisma.MembershipWhereInput = {
+      userId,
+      ...(query.status ? { status: query.status } : {}),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.membership.findMany({
+        where,
+        select: {
+          ...membershipViewSelect,
+          community: { select: communitySelect },
+        },
+        orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+        skip: query.skip,
+        take: query.limit,
+      }),
+      this.prisma.membership.count({ where }),
+    ]);
+    return paginate(
+      rows.map((row) => ({
+        community: toCommunitySummary(row.community),
+        membership: toMembershipView(row),
+      })),
+      total,
+      query.page,
+      query.limit,
+    );
+  }
+
+  /**
+   * F-COMMUNITIES-7: the community card. A PENDING or foreign membership is
+   * the same 403 as an unknown community (BR-31), so assertMember runs
+   * before anything else.
+   */
+  async getCard(
+    communityId: string,
+    userId: string,
+  ): Promise<
+    CommunitySummary & {
+      activeMemberCount: number;
+      myMembership: MembershipView;
+    }
+  > {
+    const myMembership = await assertMember(this.prisma, userId, communityId);
+
+    const community = await this.prisma.community.findUnique({
+      where: { id: communityId },
+      select: communitySelect,
+    });
+    if (!community) throw new NotFoundException('Community not found');
+    const activeMemberCount = await this.prisma.membership.count({
+      where: { communityId, status: 'ACTIVE' },
+    });
+    return {
+      ...toCommunitySummary(community),
+      activeMemberCount,
+      myMembership: toMembershipView(myMembership),
+    };
   }
 }
