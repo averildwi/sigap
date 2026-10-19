@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
@@ -20,6 +24,7 @@ import {
 import { computeJoinToken, currentWindow } from './join-token';
 import { CreateMembershipDto } from './dto/create-membership.dto';
 import { PreviewMembershipDto } from './dto/preview-membership.dto';
+import { QueryJoinRequestsDto } from './dto/query-join-requests.dto';
 
 const SECRET = 'x'.repeat(32);
 const COMMUNITY_ID = '3f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
@@ -381,5 +386,177 @@ describe('PreviewMembershipDto / CreateMembershipDto (BR-19, BR-24)', () => {
       houseBlock: ' ',
     });
     expect(validateSync(empty)).not.toEqual([]);
+  });
+});
+
+describe('MembershipsService.getJoinQr', () => {
+  let service: MembershipsService;
+  let prisma: {
+    membership: { findFirst: jest.Mock };
+    community: { findUnique: jest.Mock };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      membership: { findFirst: jest.fn() },
+      community: { findUnique: jest.fn().mockResolvedValue(COMMUNITY_ROW) },
+    };
+    const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      providers: [
+        MembershipsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: config },
+        { provide: NotificationsService, useValue: { createMany: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToUsers: jest.fn() } },
+      ],
+    }).compile();
+    service = moduleRef.get(MembershipsService);
+  });
+
+  it('answers 403 for a non-member before any other check (BR-31)', async () => {
+    prisma.membership.findFirst.mockResolvedValue(null);
+
+    await expect(service.getJoinQr(COMMUNITY_ID, USER_ID)).rejects.toEqual(
+      new ForbiddenException('You are not a member of this community'),
+    );
+    expect(prisma.community.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('answers 403 for a member without the ADMIN role (BR-32)', async () => {
+    prisma.membership.findFirst.mockResolvedValue({
+      id: 'membership-1',
+      role: 'WARGA',
+      status: 'ACTIVE',
+    });
+
+    await expect(service.getJoinQr(COMMUNITY_ID, USER_ID)).rejects.toEqual(
+      new ForbiddenException('Admin access required'),
+    );
+    expect(prisma.community.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns the QR of the current window (F-MEMBERSHIPS-1, BR-19)', async () => {
+    prisma.membership.findFirst.mockResolvedValue({
+      id: 'membership-1',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    });
+
+    const view = await service.getJoinQr(COMMUNITY_ID, USER_ID);
+
+    expect(view.token).toBe(CURRENT_TOKEN());
+    expect(view.communityId).toBe(COMMUNITY_ID);
+    expect(view.label).toBe('RT001/RW006');
+    expect(view.qrContent).toBe(`wargakita:join:${COMMUNITY_ID}:${view.token}`);
+    expect(view.window).toBe(currentWindow(new Date()));
+    // The dashed window always has seconds left for the refresh.
+    expect(view.expiresInSeconds).toBeGreaterThanOrEqual(1);
+    expect(view.expiresInSeconds).toBeLessThanOrEqual(60);
+  });
+});
+
+describe('MembershipsService.listJoinRequests', () => {
+  let service: MembershipsService;
+  let prisma: {
+    membership: { findFirst: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    $transaction: jest.Mock;
+  };
+
+  const query = (): QueryJoinRequestsDto =>
+    plainToInstance(QueryJoinRequestsDto, {});
+  const adminRow = () => ({ id: 'm1', role: 'ADMIN', status: 'ACTIVE' });
+
+  beforeEach(async () => {
+    prisma = {
+      // Batch variant of $transaction: findMany + count (nest-testing rule 4).
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+      membership: {
+        findFirst: jest.fn().mockImplementation(adminRow),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'm2',
+            houseBlock: 'Blok C2 No. 14',
+            requestedAt: new Date('2026-10-19T08:00:00Z'),
+            user: { id: USER_ID, name: 'Budi', email: 'budi@example.com' },
+          },
+        ]),
+        count: jest.fn().mockResolvedValue(1),
+      },
+    };
+    const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      providers: [
+        MembershipsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: config },
+        { provide: NotificationsService, useValue: { createMany: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToUsers: jest.fn() } },
+      ],
+    }).compile();
+    service = moduleRef.get(MembershipsService);
+  });
+
+  it('answers 403 when the caller is no ACTIVE ADMIN (BR-31/32)', async () => {
+    prisma.membership.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.listJoinRequests(COMMUNITY_ID, USER_ID, query()),
+    ).rejects.toEqual(
+      new ForbiddenException('You are not a member of this community'),
+    );
+    expect(prisma.membership.findMany).not.toHaveBeenCalled();
+  });
+
+  it('lists PENDING rows oldest first (F-MEMBERSHIPS-4)', async () => {
+    const result = await service.listJoinRequests(
+      COMMUNITY_ID,
+      USER_ID,
+      query(),
+    );
+
+    const [findManyCall] = prisma.membership.findMany.mock.calls[0] as [
+      {
+        where: Record<string, unknown>;
+        orderBy: unknown;
+        skip: number;
+        take: number;
+      },
+    ];
+    expect(findManyCall.where).toEqual({
+      communityId: COMMUNITY_ID,
+      status: 'PENDING',
+    });
+    expect(findManyCall.orderBy).toEqual({ requestedAt: 'asc' });
+    expect(findManyCall.skip).toBe(0);
+    expect(findManyCall.take).toBe(20);
+    expect(result.data[0]?.user.name).toBe('Budi');
+    expect(result.meta).toEqual({
+      total: 1,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
+  });
+
+  it('searches by requester name or house block (F-MEMBERSHIPS-4)', async () => {
+    const search = plainToInstance(QueryJoinRequestsDto, { search: 'budi' });
+
+    await service.listJoinRequests(COMMUNITY_ID, USER_ID, search);
+
+    expect(prisma.membership.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          communityId: COMMUNITY_ID,
+          status: 'PENDING',
+          OR: [
+            { user: { name: { contains: 'budi', mode: 'insensitive' } } },
+            { houseBlock: { contains: 'budi', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
   });
 });

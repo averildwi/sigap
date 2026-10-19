@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
@@ -10,6 +11,8 @@ import type {
 } from '../../generated/prisma/client';
 import { Prisma } from '../../generated/prisma/client';
 import { formatLabel } from '../common/helpers/format-label.helper';
+import { assertAdmin } from '../common/helpers/community-access.helper';
+import { paginate, PaginatedResult } from '../common/helpers/paginate.helper';
 import {
   communitySelect,
   membershipViewSelect,
@@ -35,6 +38,7 @@ import {
 } from './join-token';
 import { CreateMembershipDto } from './dto/create-membership.dto';
 import { PreviewMembershipDto } from './dto/preview-membership.dto';
+import { QueryJoinRequestsDto } from './dto/query-join-requests.dto';
 
 /** Transaction subset the membership writes run on (helper reuse, nest-prisma). */
 type MembershipClient = Pick<Prisma.TransactionClient, 'membership'>;
@@ -59,6 +63,28 @@ export interface NotificationEvent {
   communityId: string | null;
   entityId: string | null;
 }
+
+/** The join QR as GET /communities/:communityId/join-qr answers it (API_SPEC 4). */
+export interface JoinQrView {
+  communityId: string;
+  label: string;
+  qrContent: string;
+  token: string;
+  window: number;
+  expiresInSeconds: number;
+}
+
+/** A row of the join request queue (API_SPEC 4, oldest first). */
+export const joinRequestSelect = {
+  id: true,
+  houseBlock: true,
+  requestedAt: true,
+  user: { select: { id: true, name: true, email: true } },
+} satisfies Prisma.MembershipSelect;
+
+export type JoinRequestRow = Prisma.MembershipGetPayload<{
+  select: typeof joinRequestSelect;
+}>;
 
 @Injectable()
 export class MembershipsService {
@@ -248,33 +274,63 @@ export class MembershipsService {
       throw error;
     }
   }
-}
 
-/** The join QR as GET /communities/:communityId/join-qr answers it (API_SPEC 4). */
-export { buildJoinQrView };
+  /**
+   * F-MEMBERSHIPS-1 / BR-19/32: the refreshed QR of the current window.
+   * ADMIN first (assertAdmin), then the token; no write happens.
+   */
+  async getJoinQr(communityId: string, userId: string): Promise<JoinQrView> {
+    await assertAdmin(this.prisma, userId, communityId);
+    const community = await this.prisma.community.findUnique({
+      where: { id: communityId },
+      select: communitySelect,
+    });
+    if (!community) throw new NotFoundException('Community not found');
+    const now = new Date();
+    const token = createJoinToken(communityId, this.joinTokenSecret(), now);
+    return {
+      communityId,
+      label: formatLabel(community.rt, community.rw),
+      qrContent: buildQrContent(communityId, token),
+      token,
+      window: currentWindow(now),
+      expiresInSeconds: windowExpiresInSeconds(now),
+    };
+  }
 
-/** Exposed for the controller additions of the next commits. */
-function buildJoinQrView(
-  communityId: string,
-  rt: number,
-  rw: number,
-  secret: string,
-  now: Date,
-): {
-  communityId: string;
-  label: string;
-  qrContent: string;
-  token: string;
-  window: number;
-  expiresInSeconds: number;
-} {
-  const token = createJoinToken(communityId, secret, now);
-  return {
-    communityId,
-    label: formatLabel(rt, rw),
-    qrContent: buildQrContent(communityId, token),
-    token,
-    window: currentWindow(now),
-    expiresInSeconds: windowExpiresInSeconds(now),
-  };
+  /**
+   * F-MEMBERSHIPS-4 / BR-32: the PENDING queue, oldest first, searchable
+   * by requester name or house block. Every requester is verified (BR-3).
+   */
+  async listJoinRequests(
+    communityId: string,
+    userId: string,
+    query: QueryJoinRequestsDto,
+  ): Promise<PaginatedResult<JoinRequestRow>> {
+    await assertAdmin(this.prisma, userId, communityId);
+    const search = query.search;
+    const where: Prisma.MembershipWhereInput = {
+      communityId,
+      status: 'PENDING',
+      ...(search
+        ? {
+            OR: [
+              { user: { name: { contains: search, mode: 'insensitive' } } },
+              { houseBlock: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.membership.findMany({
+        where,
+        select: joinRequestSelect,
+        orderBy: { requestedAt: 'asc' },
+        skip: query.skip,
+        take: query.limit,
+      }),
+      this.prisma.membership.count({ where }),
+    ]);
+    return paginate(rows, total, query.page, query.limit);
+  }
 }
