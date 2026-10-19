@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
 import { AppConfigModule } from './common/config/app-config.module';
 import { HashingModule } from './common/hashing/hashing.module';
 import { MailModule } from './common/mail/mail.module';
@@ -23,6 +24,7 @@ import { PrismaModule } from './prisma/prisma.module';
       useFactory: (config: ConfigService) => buildThrottlerOptions(config),
     }),
     PrismaModule,
+    AuthModule,
     HealthModule,
   ],
   controllers: [AppController],
