@@ -14,8 +14,10 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { MessageResponse } from '../common/interceptors/transform.interceptor';
 import { AuthService } from './auth.service';
 import { ThrottleTier } from '../config/throttle-tier.decorator';
+import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RequestCodeDto } from './dto/request-code.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 
 const CODE_SENT = 'If the account can receive a code, it has been sent';
@@ -24,6 +26,17 @@ const CODE_SENT = 'If the account can receive a code, it has been sent';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  @ThrottleTier('auth')
+  @ApiOperation({ summary: '[PUBLIC] Log in with email and password' })
+  async login(@Body() dto: LoginDto) {
+    return new MessageResponse(
+      await this.authService.login(dto),
+      'Login successful',
+    );
+  }
 
   @Post('register')
   @ThrottleTier('auth')
@@ -54,6 +67,24 @@ export class AuthController {
   async resendOtp(@Body() dto: RequestCodeDto) {
     await this.authService.resendVerification(dto);
     return new MessageResponse(null, CODE_SENT);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ThrottleTier('auth')
+  @ApiOperation({ summary: '[PUBLIC] Send a password reset code' })
+  async forgotPassword(@Body() dto: RequestCodeDto) {
+    await this.authService.forgotPassword(dto);
+    return new MessageResponse(null, CODE_SENT);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ThrottleTier('auth')
+  @ApiOperation({ summary: '[PUBLIC] Reset the password with a code' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto);
+    return new MessageResponse(null, 'Password reset, please log in');
   }
 
   @Get('me')

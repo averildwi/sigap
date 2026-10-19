@@ -1,21 +1,27 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { randomBytes } from 'node:crypto';
 import { GlobalRole, Prisma } from '../../generated/prisma/client';
 import { HashingService } from '../common/hashing/hashing.service';
 import type { JwtPayload } from '../common/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RequestCodeDto } from './dto/request-code.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { INVALID_CODE, OtpService } from './otp/otp.service';
 
 /** App-wide role of self-registered accounts. Privileged accounts come from the seed. */
 export const DEFAULT_ROLE: GlobalRole = 'USER';
+const INVALID_CREDENTIALS = 'Invalid credentials';
 
 const tokenUserSelect = {
   id: true,
@@ -41,13 +47,40 @@ export const profileSelect = {
 } satisfies Prisma.UserSelect;
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
+  // Unknown emails are checked against this, so they cost the same scrypt run.
+  private dummyHash = '';
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly hashing: HashingService,
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    this.dummyHash = await this.hashing.hash(randomBytes(16).toString('hex'));
+  }
+
+  async login({ email, password }: LoginDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { ...tokenUserSelect, passwordHash: true, emailVerifiedAt: true },
+    });
+    const passwordOk = await this.hashing.verify(
+      password,
+      user?.passwordHash ?? this.dummyHash,
+    );
+    if (!user?.passwordHash || !passwordOk) {
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+    // Status only after the password: it is revealed to the owner, never to a guesser.
+    if (!user.isActive) throw new ForbiddenException('Account is disabled');
+    if (!user.emailVerifiedAt) {
+      throw new ForbiddenException('Email is not verified');
+    }
+    return { accessToken: await this.signToken(user) };
+  }
 
   async register({ email, password, name }: RegisterDto): Promise<void> {
     const existing = await this.prisma.user.findUnique({
@@ -109,6 +142,41 @@ export class AuthService {
     if (user && !user.emailVerifiedAt) {
       await this.otp.issue(user, 'EMAIL_VERIFICATION');
     }
+  }
+
+  async forgotPassword({ email }: RequestCodeDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, isActive: true },
+    });
+    if (user?.isActive) await this.otp.issue(user, 'PASSWORD_RESET');
+  }
+
+  async resetPassword({
+    email,
+    code,
+    newPassword,
+  }: ResetPasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, emailVerifiedAt: true },
+    });
+    if (!user) throw new BadRequestException(INVALID_CODE);
+
+    const passwordHash = await this.hashing.hash(newPassword);
+    await this.otp.consume(user.id, 'PASSWORD_RESET', code, (tx) =>
+      tx.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          // Ends every session, including one an attacker may hold (E-39).
+          tokenVersion: { increment: 1 },
+          // The code proves the inbox, so the email counts as verified.
+          emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+        },
+        select: { id: true },
+      }),
+    );
   }
 
   async me(userId: string) {

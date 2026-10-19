@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -20,6 +21,11 @@ describe('AuthService', () => {
   let otp: { issue: jest.Mock; consume: jest.Mock };
   const hashing = new HashingService();
   const jwt = new JwtService({ secret: 'x'.repeat(32) });
+  let passwordHash: string;
+
+  beforeAll(async () => {
+    passwordHash = await hashing.hash('correct horse');
+  });
 
   beforeEach(async () => {
     prisma = {
@@ -49,6 +55,71 @@ describe('AuthService', () => {
       ],
     }).compile();
     service = moduleRef.get(AuthService);
+    await service.onModuleInit();
+  });
+
+  const user = (over: Record<string, unknown> = {}) => ({
+    id: 'u1',
+    email: 'a@x.com',
+    name: 'Siti',
+    globalRole: 'USER',
+    isActive: true,
+    emailVerifiedAt: new Date(),
+    tokenVersion: 2,
+    passwordHash,
+    ...over,
+  });
+
+  describe('AuthService.login', () => {
+    it('returns { accessToken } whose payload is { sub, email, tv } without role', async () => {
+      prisma.user.findUnique.mockResolvedValue(user());
+      const { accessToken } = await service.login({
+        email: 'a@x.com',
+        password: 'correct horse',
+      });
+      const claims = jwt.decode<Record<string, unknown>>(accessToken) ?? {};
+      expect(claims).toMatchObject({ sub: 'u1', email: 'a@x.com', tv: 2 });
+      expect(claims).not.toHaveProperty('role');
+    });
+
+    it('answers an unknown email and a wrong password with the same error', async () => {
+      prisma.user.findUnique.mockResolvedValueOnce(null);
+      const unknown = await service
+        .login({ email: 'nobody@x.com', password: 'whatever1' })
+        .catch((e: unknown) => e);
+      prisma.user.findUnique.mockResolvedValueOnce(user());
+      const wrong = await service
+        .login({ email: 'a@x.com', password: 'whatever1' })
+        .catch((e: unknown) => e);
+
+      expect(unknown).toBeInstanceOf(UnauthorizedException);
+      expect(wrong).toBeInstanceOf(UnauthorizedException);
+      expect((unknown as Error).message).toBe((wrong as Error).message);
+    });
+
+    it('treats an account without a password as invalid credentials', async () => {
+      prisma.user.findUnique.mockResolvedValue(user({ passwordHash: null }));
+      await expect(
+        service.login({ email: 'a@x.com', password: 'correct horse' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('reveals a disabled account only after the password is correct (BR-3)', async () => {
+      prisma.user.findUnique.mockResolvedValue(user({ isActive: false }));
+      await expect(
+        service.login({ email: 'a@x.com', password: 'wrong pass' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(
+        service.login({ email: 'a@x.com', password: 'correct horse' }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('rejects an unverified email only after the password is correct (BR-3)', async () => {
+      prisma.user.findUnique.mockResolvedValue(user({ emailVerifiedAt: null }));
+      await expect(
+        service.login({ email: 'a@x.com', password: 'correct horse' }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
   });
 
   describe('AuthService.register', () => {
@@ -179,6 +250,104 @@ describe('AuthService', () => {
       await service.resendVerification({ email: 'a@x.com' });
       await service.resendVerification({ email: 'nobody@x.com' });
       expect(otp.issue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('AuthService.forgotPassword', () => {
+    it('issues a PASSWORD_RESET code for an active user', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        email: 'a@x.com',
+        isActive: true,
+      });
+      await service.forgotPassword({ email: 'a@x.com' });
+      expect(otp.issue).toHaveBeenCalledWith(
+        { id: 'u1', email: 'a@x.com', isActive: true },
+        'PASSWORD_RESET',
+      );
+    });
+
+    it('stays silent for unknown or disabled accounts (BR-1)', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'u1',
+          email: 'a@x.com',
+          isActive: false,
+        })
+        .mockResolvedValueOnce(null);
+      await service.forgotPassword({ email: 'a@x.com' });
+      await service.forgotPassword({ email: 'nobody@x.com' });
+      expect(otp.issue).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('AuthService.resetPassword', () => {
+    it('consumes the code, stores a new hash and bumps tokenVersion (BR-5)', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'u1',
+        emailVerifiedAt: null,
+      });
+      await service.resetPassword({
+        email: 'a@x.com',
+        code: '123456',
+        newPassword: 'nice new password',
+      });
+      const [consumeCall] = otp.consume.mock.calls as unknown as [
+        [string, string, string],
+      ];
+      expect(consumeCall).toEqual([
+        'u1',
+        'PASSWORD_RESET',
+        '123456',
+        expect.any(Function),
+      ]);
+      const [{ data }] = tx.user.update.mock.calls[0] as unknown as [
+        { data: { passwordHash: string; tokenVersion: unknown } },
+      ];
+      await expect(
+        hashing.verify('nice new password', data.passwordHash),
+      ).resolves.toBe(true);
+      expect(data.tokenVersion).toEqual({ increment: 1 });
+    });
+
+    it('also marks the email as verified once (E-38)', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ id: 'u1', emailVerifiedAt: null })
+        .mockResolvedValueOnce({
+          id: 'u1',
+          emailVerifiedAt: new Date('2024-01-02T03:04:05Z'),
+        });
+      await service.resetPassword({
+        email: 'a@x.com',
+        code: '123456',
+        newPassword: 'nice new password',
+      });
+      const [first] = tx.user.update.mock.calls[0] as unknown as [
+        { data: { emailVerifiedAt: unknown } },
+      ];
+      expect(first.data.emailVerifiedAt).toBeInstanceOf(Date);
+      await service.resetPassword({
+        email: 'a@x.com',
+        code: '654321',
+        newPassword: 'nice new password',
+      });
+      const [second] = tx.user.update.mock.calls[1] as unknown as [
+        { data: { emailVerifiedAt: unknown } },
+      ];
+      expect(second.data.emailVerifiedAt).toEqual(
+        new Date('2024-01-02T03:04:05Z'),
+      );
+    });
+
+    it('rejects an unknown email with the standard invalid-code error', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      await expect(
+        service.resetPassword({
+          email: 'nobody@x.com',
+          code: '123456',
+          newPassword: 'nice new password',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
