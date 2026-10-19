@@ -1,14 +1,12 @@
 import type { Request } from 'express';
+import type { GlobalRole } from '../../../generated/prisma/client.js';
 
 /**
- * Role names accepted by @Roles(). This placeholder union keeps typos from
- * compiling until the schema has a role enum. Once it does, derive it from
- * Prisma instead:
- *
- *   import type { Role } from '../../../generated/prisma/client.js';
- *   export type RoleName = Role;
+ * Role names accepted by @Roles(), derived from the Prisma enum so a typo
+ * does not compile. The app-wide column is `globalRole`; membership roles
+ * live on the Membership row (per-resource-roles.md).
  */
-export type RoleName = 'ADMIN' | 'USER';
+export type RoleName = GlobalRole;
 
 /**
  * Type of the User primary key. Keep `string` for uuid/cuid ids, change it to
@@ -23,10 +21,16 @@ export interface AuthUser {
   role: RoleName;
 }
 
-/** Claims signed into the access token. */
+/**
+ * Claims signed into the access token. Only for sign/verify: request.user is
+ * always AuthUser. `sub` is a string even for int ids (JWT convention).
+ * `tv` is User.tokenVersion at sign time. No role: it is read from the
+ * database on every request, so a role change applies immediately.
+ */
 export interface JwtPayload {
   sub: UserId;
   email: string;
+  tv: number;
 }
 
 /** Express request after JwtAuthGuard ran. `user` is absent on public routes. */
