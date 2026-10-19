@@ -1,10 +1,29 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { NotificationType, Prisma } from '../../generated/prisma/client';
+import { paginate, PaginatedResult } from '../common/helpers/paginate.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   buildNotificationText,
   NotificationTextContext,
 } from './notification-templates';
+import { QueryNotificationsDto } from './dto/query-notifications.dto';
+
+/** NotificationView of API_SPEC 0.3; no other column ever leaves the service. */
+export const notificationSelect = {
+  id: true,
+  type: true,
+  title: true,
+  body: true,
+  communityId: true,
+  entityType: true,
+  entityId: true,
+  readAt: true,
+  createdAt: true,
+} satisfies Prisma.NotificationSelect;
+
+export type NotificationRow = Prisma.NotificationGetPayload<{
+  select: typeof notificationSelect;
+}>;
 
 /** The Prisma client a notification write runs on (inside a caller's transaction). */
 export type NotificationTxClient = Pick<
@@ -51,5 +70,69 @@ export class NotificationsService {
         entityId: input.entityId,
       })),
     });
+  }
+
+  /**
+   * F-NOTIFICATIONS-1 / BR-65: the caller's rows only, newest first,
+   * filterable by unread and by community.
+   */
+  async findAll(
+    query: QueryNotificationsDto,
+    userId: string,
+  ): Promise<PaginatedResult<NotificationRow>> {
+    const where: Prisma.NotificationWhereInput = {
+      userId,
+      ...(query.unread ? { readAt: null } : {}),
+      ...(query.communityId ? { communityId: query.communityId } : {}),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.notification.findMany({
+        where,
+        select: notificationSelect,
+        orderBy: { createdAt: 'desc' },
+        skip: query.skip,
+        take: query.limit,
+      }),
+      this.prisma.notification.count({ where }),
+    ]);
+    return paginate(rows, total, query.page, query.limit);
+  }
+
+  /** F-NOTIFICATIONS-1: the unread badge count. */
+  async unreadCount(userId: string): Promise<{ count: number }> {
+    const count = await this.prisma.notification.count({
+      where: { userId, readAt: null },
+    });
+    return { count };
+  }
+
+  /**
+   * F-NOTIFICATIONS-2 / BR-65: only the caller's unread rows are written
+   * (`updateMany` where `userId` and `readAt: null`); a foreign id and a
+   * missing id give the same 404, an already-read id answers as is.
+   */
+  async markRead(id: string, userId: string): Promise<NotificationRow> {
+    const updated = await this.prisma.notification.updateMany({
+      where: { id, userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    // Already-read rows are answered as is; a foreign or missing id is 404.
+    const row = await this.prisma.notification.findFirst({
+      where: { id, userId },
+      select: notificationSelect,
+    });
+    if (updated.count === 0 && !row) {
+      throw new NotFoundException('Notification not found');
+    }
+    return row as NotificationRow;
+  }
+
+  /** F-NOTIFICATIONS-2 / BR-65: mark-all touches only the caller's rows. */
+  async readAll(userId: string): Promise<{ updated: number }> {
+    const { count } = await this.prisma.notification.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    return { updated: count };
   }
 }
