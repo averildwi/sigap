@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,7 +12,11 @@ import type {
 } from '../../generated/prisma/client';
 import { Prisma } from '../../generated/prisma/client';
 import { formatLabel } from '../common/helpers/format-label.helper';
-import { assertAdmin } from '../common/helpers/community-access.helper';
+import {
+  assertAdmin,
+  assertMember,
+  NOT_MEMBER_MESSAGE,
+} from '../common/helpers/community-access.helper';
 import { paginate, PaginatedResult } from '../common/helpers/paginate.helper';
 import {
   communitySelect,
@@ -39,6 +44,8 @@ import {
 import { CreateMembershipDto } from './dto/create-membership.dto';
 import { PreviewMembershipDto } from './dto/preview-membership.dto';
 import { QueryJoinRequestsDto } from './dto/query-join-requests.dto';
+import { QueryMembersDto } from './dto/query-members.dto';
+import { ChangeMembershipRoleDto } from './dto/change-membership-role.dto';
 
 /** Transaction subset the membership writes run on (helper reuse, nest-prisma). */
 type MembershipClient = Pick<Prisma.TransactionClient, 'membership'>;
@@ -104,6 +111,27 @@ export type MembershipViewWithUser = MembershipView & {
 /** BR-25 messages. */
 export const NOT_PENDING_MESSAGE = 'Join request is no longer pending';
 export const JOIN_REQUEST_NOT_FOUND_MESSAGE = 'Join request not found';
+
+/** Admin operation messages (BR-27..30). */
+export const MEMBER_NOT_FOUND_MESSAGE = 'Member not found';
+export const MEMBER_NOT_ACTIVE_MESSAGE = 'Member is not active';
+export const NEEDS_ADMIN_MESSAGE = 'A community needs at least one admin';
+export const REMOVE_SELF_MESSAGE = 'You cannot remove yourself, leave instead';
+export const PROMOTE_FIRST_MESSAGE = 'Promote another admin first';
+
+/** A member row of the member list (API_SPEC 4). */
+export const memberListSelect = {
+  id: true,
+  houseBlock: true,
+  role: true,
+  status: true,
+  joinedAt: true,
+  user: { select: { id: true, name: true, phone: true } },
+} satisfies Prisma.MembershipSelect;
+
+export type MemberListRow = Prisma.MembershipGetPayload<{
+  select: typeof memberListSelect;
+}>;
 
 @Injectable()
 export class MembershipsService {
@@ -448,5 +476,176 @@ export class MembershipsService {
       ...toMembershipView(membership),
       user: membership.user,
     };
+  }
+
+  /**
+   * F-MEMBERSHIPS-10 / BR-32: the member list, ADMIN first then by name,
+   * filterable by status (default ACTIVE) and role, searchable.
+   */
+  async listMembers(
+    communityId: string,
+    userId: string,
+    query: QueryMembersDto,
+  ): Promise<PaginatedResult<MemberListRow>> {
+    await assertAdmin(this.prisma, userId, communityId);
+    const search = query.search;
+    const where: Prisma.MembershipWhereInput = {
+      communityId,
+      status: query.status ?? 'ACTIVE',
+      ...(query.role ? { role: query.role } : {}),
+      ...(search
+        ? {
+            OR: [
+              { user: { name: { contains: search, mode: 'insensitive' } } },
+              { houseBlock: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.membership.findMany({
+        where,
+        select: memberListSelect,
+        orderBy: [{ role: 'asc' }, { user: { name: 'asc' } }],
+        skip: query.skip,
+        take: query.limit,
+      }),
+      this.prisma.membership.count({ where }),
+    ]);
+    return paginate(rows, total, query.page, query.limit);
+  }
+
+  /**
+   * F-MEMBERSHIPS-11 / BR-27/29: role change on an ACTIVE member. A demotion
+   * must keep at least one other ACTIVE ADMIN; the conditional update lets
+   * a race lose with 400 (G-L2: two admins demoting each other at once can
+   * both pass the count). Demoting to the same role answers unchanged.
+   */
+  async changeRole(
+    communityId: string,
+    membershipId: string,
+    adminUserId: string,
+    dto: ChangeMembershipRoleDto,
+  ): Promise<MembershipViewWithUser> {
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await assertAdmin(tx, adminUserId, communityId);
+      const target = await tx.membership.findUnique({
+        where: { id: membershipId },
+        select: { id: true, communityId: true, status: true, role: true },
+      });
+      if (!target || target.communityId !== communityId) {
+        throw new NotFoundException(MEMBER_NOT_FOUND_MESSAGE);
+      }
+      if (target.status !== 'ACTIVE') {
+        throw new BadRequestException(MEMBER_NOT_ACTIVE_MESSAGE);
+      }
+      if (target.role === 'ADMIN' && dto.role === 'WARGA') {
+        await this.assertOtherAdmin(tx, communityId);
+      }
+      const result = await tx.membership.updateMany({
+        where: { id: membershipId, communityId, status: 'ACTIVE' },
+        data: { role: dto.role },
+      });
+      if (result.count === 0) {
+        throw new BadRequestException(MEMBER_NOT_ACTIVE_MESSAGE);
+      }
+      return tx.membership.findUnique({
+        where: { id: membershipId },
+        select: membershipUserSelect,
+      });
+    });
+    if (!updated) throw new NotFoundException(MEMBER_NOT_FOUND_MESSAGE);
+    return { ...toMembershipView(updated), user: updated.user };
+  }
+
+  /**
+   * F-MEMBERSHIPS-9 / BR-27/28/30: an admin removes any ACTIVE member but
+   * never themselves (use leave) and never the last ACTIVE ADMIN. Removal
+   * sets REMOVED with role WARGA and decidedAt.
+   */
+  async remove(
+    communityId: string,
+    membershipId: string,
+    adminUserId: string,
+  ): Promise<MembershipViewWithUser> {
+    const now = new Date();
+    const removed = await this.prisma.$transaction(async (tx) => {
+      await assertAdmin(tx, adminUserId, communityId);
+      const target = await tx.membership.findUnique({
+        where: { id: membershipId },
+        select: {
+          id: true,
+          communityId: true,
+          status: true,
+          role: true,
+          userId: true,
+        },
+      });
+      if (!target || target.communityId !== communityId) {
+        throw new NotFoundException(MEMBER_NOT_FOUND_MESSAGE);
+      }
+      // Removing yourself is answered by the leave endpoint instead (BR-28).
+      if (target.userId === adminUserId) {
+        throw new BadRequestException(REMOVE_SELF_MESSAGE);
+      }
+      if (target.status !== 'ACTIVE') {
+        throw new BadRequestException(MEMBER_NOT_ACTIVE_MESSAGE);
+      }
+      if (target.role === 'ADMIN') {
+        await this.assertOtherAdmin(tx, communityId);
+      }
+      const result = await tx.membership.updateMany({
+        where: { id: membershipId, communityId, status: 'ACTIVE' },
+        data: { status: 'REMOVED', role: 'WARGA', decidedAt: now },
+      });
+      if (result.count === 0) {
+        throw new BadRequestException(MEMBER_NOT_ACTIVE_MESSAGE);
+      }
+      return tx.membership.findUnique({
+        where: { id: membershipId },
+        select: membershipUserSelect,
+      });
+    });
+    if (!removed) throw new NotFoundException(MEMBER_NOT_FOUND_MESSAGE);
+    return { ...toMembershipView(removed), user: removed.user };
+  }
+
+  /**
+   * F-MEMBERSHIPS-8 / BR-27/30: an ACTIVE member leaves; LEFT resets the
+   * role to WARGA. The last ACTIVE ADMIN cannot leave, even when they are
+   * the only member (G-L14): promote another admin first.
+   */
+  async leave(communityId: string, userId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const myMembership = await assertMember(tx, userId, communityId);
+      if (myMembership.role === 'ADMIN') {
+        const admins = await tx.membership.count({
+          where: { communityId, status: 'ACTIVE', role: 'ADMIN' },
+        });
+        if (admins <= 1) {
+          throw new BadRequestException(PROMOTE_FIRST_MESSAGE);
+        }
+      }
+      const result = await tx.membership.updateMany({
+        where: { userId, communityId, status: 'ACTIVE' },
+        data: { status: 'LEFT', role: 'WARGA' },
+      });
+      if (result.count === 0) {
+        throw new ForbiddenException(NOT_MEMBER_MESSAGE);
+      }
+    });
+  }
+
+  /** BR-27 helper: refuse when `communityId` has exactly one ACTIVE ADMIN. */
+  private async assertOtherAdmin(
+    tx: MembershipClient,
+    communityId: string,
+  ): Promise<void> {
+    const admins = await tx.membership.count({
+      where: { communityId, status: 'ACTIVE', role: 'ADMIN' },
+    });
+    if (admins <= 1) {
+      throw new BadRequestException(NEEDS_ADMIN_MESSAGE);
+    }
   }
 }

@@ -1,10 +1,12 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -17,8 +19,11 @@ import {
   MessageResponse,
   Paginated,
 } from '../common/interceptors/transform.interceptor';
+import type { AuthUser } from '../common/types/auth-user';
 import { MembershipsService } from './memberships.service';
 import { QueryJoinRequestsDto } from './dto/query-join-requests.dto';
+import { QueryMembersDto } from './dto/query-members.dto';
+import { ChangeMembershipRoleDto } from './dto/change-membership-role.dto';
 
 /**
  * The community-scoped half of the memberships module. Nothing here is
@@ -98,5 +103,80 @@ export class CommunityMembershipsController {
       await this.membershipsService.reject(communityId, membershipId, userId),
       'Join request rejected',
     );
+  }
+
+  @Get('memberships')
+  @ApiOperation({
+    summary: '[AUTH] List members',
+    description:
+      'Caller must be an ACTIVE ADMIN of :communityId (service check, assertAdmin).',
+  })
+  async listMembers(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @CurrentUser('id') userId: string,
+    @Query() query: QueryMembersDto,
+  ) {
+    const result = await this.membershipsService.listMembers(
+      communityId,
+      userId,
+      query,
+    );
+    return new Paginated(result.data, result.meta);
+  }
+
+  @Patch('memberships/:membershipId/role')
+  @ApiOperation({
+    summary: "[AUTH] Change a member's role",
+    description:
+      'Caller must be an ACTIVE ADMIN of :communityId (service check, assertAdmin). Setting the last ACTIVE ADMIN to WARGA is refused with 400 (BR-27).',
+  })
+  async changeRole(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Param('membershipId', ParseUUIDPipe) membershipId: string,
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangeMembershipRoleDto,
+  ) {
+    return new MessageResponse(
+      await this.membershipsService.changeRole(
+        communityId,
+        membershipId,
+        user.id,
+        dto,
+      ),
+      'Role updated',
+    );
+  }
+
+  @Post('memberships/:membershipId/remove')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '[AUTH] Remove a member',
+    description:
+      'Caller must be an ACTIVE ADMIN of :communityId (service check, assertAdmin). Removing yourself or the last ACTIVE ADMIN is refused with 400 (BR-28, BR-27).',
+  })
+  async remove(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Param('membershipId', ParseUUIDPipe) membershipId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return new MessageResponse(
+      await this.membershipsService.remove(communityId, membershipId, userId),
+      'Member removed',
+    );
+  }
+
+  @Post('leave')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '[AUTH] Leave a community',
+    description:
+      'Any ACTIVE member (service check). The last ACTIVE ADMIN cannot leave (BR-27), even as the only member (G-L14).',
+  })
+  async leave(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    await this.membershipsService.leave(communityId, userId);
+    return new MessageResponse(null, 'You left the community');
   }
 }

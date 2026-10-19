@@ -26,6 +26,13 @@ import { computeJoinToken, currentWindow } from './join-token';
 import { CreateMembershipDto } from './dto/create-membership.dto';
 import { PreviewMembershipDto } from './dto/preview-membership.dto';
 import { QueryJoinRequestsDto } from './dto/query-join-requests.dto';
+import { QueryMembersDto } from './dto/query-members.dto';
+import { ChangeMembershipRoleDto } from './dto/change-membership-role.dto';
+
+const roleDto = (
+  role: ChangeMembershipRoleDto['role'],
+): ChangeMembershipRoleDto =>
+  plainToInstance(ChangeMembershipRoleDto, { role });
 
 const SECRET = 'x'.repeat(32);
 const COMMUNITY_ID = '3f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
@@ -749,5 +756,514 @@ describe('MembershipsService.approve / reject', () => {
         entityId: 'membership-1',
       },
     );
+  });
+});
+
+describe('MembershipsService.listMembers', () => {
+  let service: MembershipsService;
+  let prisma: {
+    membership: { findFirst: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    $transaction: jest.Mock;
+  };
+
+  const query = (): QueryMembersDto => plainToInstance(QueryMembersDto, {});
+
+  beforeEach(async () => {
+    prisma = {
+      // Batch variant of $transaction: findMany + count (nest-testing rule 4).
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+      membership: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'm-admin',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'm2',
+            houseBlock: 'Blok C2 No. 14',
+            role: 'WARGA',
+            status: 'ACTIVE',
+            joinedAt: NOW,
+            user: { id: USER_ID, name: 'Budi', phone: '+628123456789' },
+          },
+        ]),
+        count: jest.fn().mockResolvedValue(1),
+      },
+    };
+    const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      providers: [
+        MembershipsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: config },
+        { provide: NotificationsService, useValue: { createMany: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToUsers: jest.fn() } },
+      ],
+    }).compile();
+    service = moduleRef.get(MembershipsService);
+  });
+
+  it('answers 403 when the caller is no ACTIVE ADMIN (BR-31/32)', async () => {
+    prisma.membership.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.listMembers(COMMUNITY_ID, USER_ID, query()),
+    ).rejects.toEqual(
+      new ForbiddenException('You are not a member of this community'),
+    );
+    expect(prisma.membership.findMany).not.toHaveBeenCalled();
+  });
+
+  it('reads ACTIVE members by default, admins first then by name (F-MEMBERSHIPS-10)', async () => {
+    const result = await service.listMembers(COMMUNITY_ID, USER_ID, query());
+
+    const [findManyCall] = prisma.membership.findMany.mock.calls[0] as [
+      {
+        where: Record<string, unknown>;
+        orderBy: unknown;
+        skip: number;
+        take: number;
+      },
+    ];
+    expect(findManyCall.where).toEqual({
+      communityId: COMMUNITY_ID,
+      status: 'ACTIVE',
+    });
+    expect(findManyCall.orderBy).toEqual([
+      { role: 'asc' },
+      { user: { name: 'asc' } },
+    ]);
+    expect(result.data[0]?.user.phone).toBe('+628123456789');
+    expect(result.meta.total).toBe(1);
+  });
+
+  it('filters by status, role and search when named (F-MEMBERSHIPS-10)', async () => {
+    const filtered = plainToInstance(QueryMembersDto, {
+      status: 'LEFT',
+      role: 'ADMIN',
+      search: 'budi',
+    });
+
+    await service.listMembers(COMMUNITY_ID, USER_ID, filtered);
+
+    expect(prisma.membership.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          communityId: COMMUNITY_ID,
+          status: 'LEFT',
+          role: 'ADMIN',
+          OR: [
+            { user: { name: { contains: 'budi', mode: 'insensitive' } } },
+            { houseBlock: { contains: 'budi', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
+  });
+});
+
+describe('MembershipsService.changeRole', () => {
+  let service: MembershipsService;
+  let tx: {
+    membership: {
+      findUnique: jest.Mock;
+      updateMany: jest.Mock;
+      count: jest.Mock;
+      findFirst: jest.Mock;
+    };
+  };
+  let prisma: { $transaction: jest.Mock };
+
+  const adminTarget = () => ({
+    id: 'membership-1',
+    communityId: COMMUNITY_ID,
+    status: 'ACTIVE',
+    role: 'ADMIN',
+  });
+
+  beforeEach(async () => {
+    tx = {
+      membership: {
+        findUnique: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        count: jest.fn().mockResolvedValue(2),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'm-admin',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+        }),
+      },
+    };
+    prisma = {
+      // Interactive transaction: run the callback with the mocked tx client.
+      $transaction: jest.fn((cb: (client: typeof tx) => Promise<unknown>) =>
+        cb(tx),
+      ),
+    };
+    const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      providers: [
+        MembershipsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: config },
+        { provide: NotificationsService, useValue: { createMany: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToUsers: jest.fn() } },
+      ],
+    }).compile();
+    service = moduleRef.get(MembershipsService);
+  });
+
+  it('answers 404 for a missing or foreign member (BR-33)', async () => {
+    tx.membership.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.changeRole(
+        COMMUNITY_ID,
+        'membership-1',
+        'admin-1',
+        roleDto('WARGA'),
+      ),
+    ).rejects.toEqual(new NotFoundException('Member not found'));
+    expect(tx.membership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when the member is not ACTIVE (BR-29)', async () => {
+    tx.membership.findUnique.mockResolvedValue({
+      ...adminTarget(),
+      status: 'PENDING',
+    });
+
+    await expect(
+      service.changeRole(
+        COMMUNITY_ID,
+        'membership-1',
+        'admin-1',
+        roleDto('WARGA'),
+      ),
+    ).rejects.toEqual(new BadRequestException('Member is not active'));
+    expect(tx.membership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when demoting the last ACTIVE ADMIN (BR-27)', async () => {
+    tx.membership.findUnique.mockImplementation(adminTarget);
+    tx.membership.count.mockResolvedValue(1);
+
+    await expect(
+      service.changeRole(
+        COMMUNITY_ID,
+        'membership-1',
+        'admin-1',
+        roleDto('WARGA'),
+      ),
+    ).rejects.toEqual(
+      new BadRequestException('A community needs at least one admin'),
+    );
+    expect(tx.membership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('accepts demoting an ADMIN while another stays ACTIVE (BR-27)', async () => {
+    tx.membership.findUnique
+      .mockImplementationOnce(adminTarget)
+      .mockResolvedValueOnce({
+        id: 'membership-1',
+        status: 'ACTIVE',
+        role: 'WARGA',
+        houseBlock: 'Blok C2 No. 14',
+        requestedAt: NOW,
+        decidedAt: NOW,
+        joinedAt: NOW,
+        user: { id: USER_ID, name: 'Budi' },
+      });
+
+    const result = await service.changeRole(
+      COMMUNITY_ID,
+      'membership-1',
+      'admin-1',
+      roleDto('WARGA'),
+    );
+
+    expect(result.role).toBe('WARGA');
+    expect(tx.membership.count).toHaveBeenCalledWith({
+      where: { communityId: COMMUNITY_ID, status: 'ACTIVE', role: 'ADMIN' },
+    });
+    expect(tx.membership.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'membership-1',
+        communityId: COMMUNITY_ID,
+        status: 'ACTIVE',
+      },
+      data: { role: 'WARGA' },
+    });
+  });
+
+  it('answers 400 when the conditional update loses the race (G-L2)', async () => {
+    tx.membership.findUnique
+      .mockImplementationOnce(adminTarget)
+      .mockResolvedValueOnce({
+        id: 'membership-1',
+        status: 'ACTIVE',
+        role: 'WARGA',
+        houseBlock: 'Blok C2 No. 14',
+        requestedAt: NOW,
+        decidedAt: NOW,
+        joinedAt: NOW,
+        user: { id: USER_ID, name: 'Budi' },
+      });
+    tx.membership.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.changeRole(
+        COMMUNITY_ID,
+        'membership-1',
+        'admin-1',
+        roleDto('WARGA'),
+      ),
+    ).rejects.toEqual(new BadRequestException('Member is not active'));
+  });
+});
+
+describe('ChangeMembershipRoleDto (G-L7)', () => {
+  it('accepts the two membership roles and nothing else', () => {
+    expect(validateSync(roleDto('ADMIN'))).toEqual([]);
+    expect(validateSync(roleDto('WARGA'))).toEqual([]);
+    expect(validateSync(roleDto('OWNER' as 'ADMIN'))).not.toEqual([]);
+  });
+});
+
+describe('MembershipsService.remove', () => {
+  let service: MembershipsService;
+  let tx: {
+    membership: {
+      findUnique: jest.Mock;
+      updateMany: jest.Mock;
+      count: jest.Mock;
+      findFirst: jest.Mock;
+    };
+  };
+  let prisma: { $transaction: jest.Mock };
+
+  const target = () => ({
+    id: 'membership-1',
+    communityId: COMMUNITY_ID,
+    status: 'ACTIVE',
+    role: 'WARGA',
+    userId: '5f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d',
+  });
+  const removedRow = () => ({
+    id: 'membership-1',
+    status: 'REMOVED',
+    role: 'WARGA',
+    houseBlock: 'Blok C2 No. 14',
+    requestedAt: NOW,
+    decidedAt: NOW,
+    joinedAt: null,
+    user: { id: '5f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d', name: 'Sinta' },
+  });
+
+  beforeEach(async () => {
+    tx = {
+      membership: {
+        findUnique: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        count: jest.fn().mockResolvedValue(2),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'm-admin',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+        }),
+      },
+    };
+    prisma = {
+      // Interactive transaction: run the callback with the mocked tx client.
+      $transaction: jest.fn((cb: (client: typeof tx) => Promise<unknown>) =>
+        cb(tx),
+      ),
+    };
+    const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      providers: [
+        MembershipsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: config },
+        { provide: NotificationsService, useValue: { createMany: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToUsers: jest.fn() } },
+      ],
+    }).compile();
+    service = moduleRef.get(MembershipsService);
+  });
+
+  it('answers 400 when an admin removes themselves (BR-28)', async () => {
+    tx.membership.findUnique.mockImplementation(() => ({
+      ...target(),
+      userId: 'admin-1',
+    }));
+
+    await expect(
+      service.remove(COMMUNITY_ID, 'membership-1', 'admin-1'),
+    ).rejects.toEqual(
+      new BadRequestException('You cannot remove yourself, leave instead'),
+    );
+    expect(tx.membership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when removing the last ACTIVE ADMIN (BR-27)', async () => {
+    tx.membership.findUnique.mockImplementation(() => ({
+      ...target(),
+      role: 'ADMIN',
+    }));
+    tx.membership.count.mockResolvedValue(1);
+
+    await expect(
+      service.remove(COMMUNITY_ID, 'membership-1', 'admin-1'),
+    ).rejects.toEqual(
+      new BadRequestException('A community needs at least one admin'),
+    );
+    expect(tx.membership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when the member is not ACTIVE (BR-28)', async () => {
+    tx.membership.findUnique.mockImplementation(() => ({
+      ...target(),
+      status: 'LEFT',
+    }));
+
+    await expect(
+      service.remove(COMMUNITY_ID, 'membership-1', 'admin-1'),
+    ).rejects.toEqual(new BadRequestException('Member is not active'));
+    expect(tx.membership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('removes to REMOVED WARGA with decidedAt (BR-28, BR-30)', async () => {
+    tx.membership.findUnique
+      .mockImplementationOnce(target)
+      .mockResolvedValueOnce(removedRow());
+
+    const result = await service.remove(
+      COMMUNITY_ID,
+      'membership-1',
+      'admin-1',
+    );
+
+    expect(result.status).toBe('REMOVED');
+    expect(result.role).toBe('WARGA');
+    const [removeCall] = tx.membership.updateMany.mock.calls[0] as [
+      { where: Record<string, unknown>; data: Record<string, unknown> },
+    ];
+    expect(removeCall.where).toEqual({
+      id: 'membership-1',
+      communityId: COMMUNITY_ID,
+      status: 'ACTIVE',
+    });
+    expect(removeCall.data.status).toBe('REMOVED');
+    expect(removeCall.data.role).toBe('WARGA');
+    expect(removeCall.data.decidedAt).toBeInstanceOf(Date);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('MembershipsService.leave', () => {
+  let service: MembershipsService;
+  let tx: {
+    membership: {
+      findFirst: jest.Mock;
+      count: jest.Mock;
+      updateMany: jest.Mock;
+    };
+  };
+  let prisma: { $transaction: jest.Mock };
+
+  beforeEach(async () => {
+    tx = {
+      membership: {
+        findFirst: jest.fn(),
+        count: jest.fn().mockResolvedValue(2),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    prisma = {
+      // Interactive transaction: run the callback with the mocked tx client.
+      $transaction: jest.fn((cb: (client: typeof tx) => Promise<unknown>) =>
+        cb(tx),
+      ),
+    };
+    const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      providers: [
+        MembershipsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: config },
+        { provide: NotificationsService, useValue: { createMany: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { emitToUsers: jest.fn() } },
+      ],
+    }).compile();
+    service = moduleRef.get(MembershipsService);
+  });
+
+  it('answers 403 for a non-member of the community (BR-31)', async () => {
+    tx.membership.findFirst.mockResolvedValue(null);
+
+    await expect(service.leave(COMMUNITY_ID, USER_ID)).rejects.toEqual(
+      new ForbiddenException('You are not a member of this community'),
+    );
+    expect(tx.membership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 for the last ACTIVE ADMIN and refuses even as the only member (BR-27, G-L14)', async () => {
+    tx.membership.findFirst.mockResolvedValue({
+      id: 'm-admin',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    });
+    tx.membership.count.mockResolvedValue(1);
+
+    await expect(service.leave(COMMUNITY_ID, USER_ID)).rejects.toEqual(
+      new BadRequestException('Promote another admin first'),
+    );
+    expect(tx.membership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects any write when the update lost the row (stale member)', async () => {
+    tx.membership.findFirst.mockResolvedValue({
+      id: 'm-admin',
+      role: 'WARGA',
+      status: 'ACTIVE',
+    });
+    tx.membership.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.leave(COMMUNITY_ID, USER_ID)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('leaves to LEFT WARGA (F-MEMBERSHIPS-8, BR-30)', async () => {
+    tx.membership.findFirst.mockResolvedValue({
+      id: 'm-admin',
+      role: 'WARGA',
+      status: 'ACTIVE',
+    });
+
+    await service.leave(COMMUNITY_ID, USER_ID);
+
+    expect(tx.membership.updateMany).toHaveBeenCalledWith({
+      where: { userId: USER_ID, communityId: COMMUNITY_ID, status: 'ACTIVE' },
+      data: { status: 'LEFT', role: 'WARGA' },
+    });
+  });
+
+  it('lets a WARGA leave without the admin count check (F-MEMBERSHIPS-8)', async () => {
+    tx.membership.findFirst.mockResolvedValue({
+      id: 'm-admin',
+      role: 'WARGA',
+      status: 'ACTIVE',
+    });
+
+    await service.leave(COMMUNITY_ID, USER_ID);
+
+    expect(tx.membership.count).not.toHaveBeenCalled();
   });
 });
