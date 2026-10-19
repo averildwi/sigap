@@ -86,6 +86,25 @@ export type JoinRequestRow = Prisma.MembershipGetPayload<{
   select: typeof joinRequestSelect;
 }>;
 
+/** A decided or role-changed membership plus its user ref (API_SPEC 4). */
+export const membershipUserSelect = {
+  ...membershipViewSelect,
+  user: { select: { id: true, name: true } },
+} satisfies Prisma.MembershipSelect;
+
+export type MembershipWithUser = Prisma.MembershipGetPayload<{
+  select: typeof membershipUserSelect;
+}>;
+
+/** MembershipView plus the user ref the decision endpoints answer with. */
+export type MembershipViewWithUser = MembershipView & {
+  user: { id: string; name: string };
+};
+
+/** BR-25 messages. */
+export const NOT_PENDING_MESSAGE = 'Join request is no longer pending';
+export const JOIN_REQUEST_NOT_FOUND_MESSAGE = 'Join request not found';
+
 @Injectable()
 export class MembershipsService {
   constructor(
@@ -332,5 +351,102 @@ export class MembershipsService {
       this.prisma.membership.count({ where }),
     ]);
     return paginate(rows, total, query.page, query.limit);
+  }
+
+  /**
+   * F-MEMBERSHIPS-5 / F-MEMBERSHIPS-6 / BR-25: approve or reject works only
+   * on PENDING via a conditional `updateMany`; a lost race (another admin
+   * decided first) re-reads to answer 404 (missing or foreign row, BR-33)
+   * vs 400. BR-66: JOIN_APPROVED / JOIN_REJECTED are in-app only (R-35).
+   */
+  async approve(
+    communityId: string,
+    membershipId: string,
+    adminUserId: string,
+  ): Promise<MembershipViewWithUser> {
+    return this.decideJoinRequest(
+      communityId,
+      membershipId,
+      adminUserId,
+      'JOIN_APPROVED',
+    );
+  }
+
+  async reject(
+    communityId: string,
+    membershipId: string,
+    adminUserId: string,
+  ): Promise<MembershipViewWithUser> {
+    return this.decideJoinRequest(
+      communityId,
+      membershipId,
+      adminUserId,
+      'JOIN_REJECTED',
+    );
+  }
+
+  /** Shared conditional update of BR-25; approve sets ACTIVE, reject REJECTED. */
+  private async decideJoinRequest(
+    communityId: string,
+    membershipId: string,
+    adminUserId: string,
+    type: NotificationType,
+  ): Promise<MembershipViewWithUser> {
+    const now = new Date();
+    const membership = await this.prisma.$transaction(async (tx) => {
+      await assertAdmin(tx, adminUserId, communityId);
+      const community = await tx.community.findUnique({
+        where: { id: communityId },
+        select: communitySelect,
+      });
+      if (!community) throw new NotFoundException('Community not found');
+
+      const updated = await tx.membership.updateMany({
+        where: { id: membershipId, communityId, status: 'PENDING' },
+        data:
+          type === 'JOIN_APPROVED'
+            ? { status: 'ACTIVE', role: 'WARGA', decidedAt: now, joinedAt: now }
+            : { status: 'REJECTED', role: 'WARGA', decidedAt: now },
+      });
+      if (updated.count === 0) {
+        const row: { communityId: string } | null =
+          await tx.membership.findUnique({
+            where: { id: membershipId },
+            select: { communityId: true },
+          });
+        // A foreign or missing row is 404, exactly like a missing id (BR-33).
+        if (!row || row.communityId !== communityId) {
+          throw new NotFoundException(JOIN_REQUEST_NOT_FOUND_MESSAGE);
+        }
+        throw new BadRequestException(NOT_PENDING_MESSAGE);
+      }
+
+      const decidedMembership = await tx.membership.findUnique({
+        where: { id: membershipId },
+        select: membershipUserSelect,
+      });
+      if (!decidedMembership) {
+        throw new NotFoundException(JOIN_REQUEST_NOT_FOUND_MESSAGE);
+      }
+      await this.notifications.createMany(tx, {
+        userIds: [decidedMembership.user.id],
+        communityId,
+        type,
+        entityId: membershipId,
+        context: { label: formatLabel(community.rt, community.rw) },
+      });
+      return decidedMembership;
+    });
+
+    // After the commit (BR-69): the requester gets the decision in-app.
+    this.realtime.emitToUsers(
+      [membership.user.id],
+      REALTIME_EVENTS.notificationNew,
+      { type, communityId, entityId: membershipId } satisfies NotificationEvent,
+    );
+    return {
+      ...toMembershipView(membership),
+      user: membership.user,
+    };
   }
 }

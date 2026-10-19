@@ -1,8 +1,11 @@
 import {
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -10,7 +13,10 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { Paginated } from '../common/interceptors/transform.interceptor';
+import {
+  MessageResponse,
+  Paginated,
+} from '../common/interceptors/transform.interceptor';
 import { MembershipsService } from './memberships.service';
 import { QueryJoinRequestsDto } from './dto/query-join-requests.dto';
 
@@ -56,5 +62,41 @@ export class CommunityMembershipsController {
       query,
     );
     return new Paginated(result.data, result.meta);
+  }
+
+  @Post('memberships/:membershipId/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '[AUTH] Approve a join request',
+    description:
+      'Caller must be an ACTIVE ADMIN of :communityId (service check, assertAdmin). Only PENDING is settable (BR-25); a lost race is 400.',
+  })
+  async approve(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Param('membershipId', ParseUUIDPipe) membershipId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return new MessageResponse(
+      await this.membershipsService.approve(communityId, membershipId, userId),
+      'Join request approved',
+    );
+  }
+
+  @Post('memberships/:membershipId/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '[AUTH] Reject a join request',
+    description:
+      'Caller must be an ACTIVE ADMIN of :communityId (service check, assertAdmin). Only PENDING is settable (BR-25); a lost race is 400.',
+  })
+  async reject(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Param('membershipId', ParseUUIDPipe) membershipId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return new MessageResponse(
+      await this.membershipsService.reject(communityId, membershipId, userId),
+      'Join request rejected',
+    );
   }
 }

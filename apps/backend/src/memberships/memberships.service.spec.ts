@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
@@ -557,6 +558,196 @@ describe('MembershipsService.listJoinRequests', () => {
           ],
         },
       }),
+    );
+  });
+});
+
+describe('MembershipsService.approve / reject', () => {
+  let service: MembershipsService;
+  let tx: {
+    membership: {
+      updateMany: jest.Mock;
+      findUnique: jest.Mock;
+      findFirst: jest.Mock;
+    };
+    community: { findUnique: jest.Mock };
+  };
+  let prisma: { $transaction: jest.Mock };
+  let notifications: { createMany: jest.Mock };
+  let realtime: { emitToUsers: jest.Mock };
+
+  const requesterUser = () => ({ id: USER_ID, name: 'Budi' });
+  const activeRow = () => ({
+    id: 'membership-1',
+    communityId: COMMUNITY_ID,
+    status: 'ACTIVE',
+    role: 'WARGA',
+    houseBlock: 'Blok C2 No. 14',
+    requestedAt: NOW,
+    decidedAt: NOW,
+    joinedAt: NOW,
+    user: requesterUser(),
+  });
+
+  beforeEach(async () => {
+    tx = {
+      // One ACTIVE ADMIN row so assertAdmin passes by default.
+      membership: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockImplementation(activeRow),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'm-admin',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+        }),
+      },
+      community: { findUnique: jest.fn().mockResolvedValue(COMMUNITY_ROW) },
+    };
+    prisma = {
+      // Interactive transaction: run the callback with the mocked tx client.
+      $transaction: jest.fn((cb: (client: typeof tx) => Promise<unknown>) =>
+        cb(tx),
+      ),
+    };
+    notifications = { createMany: jest.fn() };
+    realtime = { emitToUsers: jest.fn() };
+    const config = { getOrThrow: jest.fn().mockReturnValue(SECRET) };
+
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      providers: [
+        MembershipsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: config },
+        { provide: NotificationsService, useValue: notifications },
+        { provide: RealtimeGateway, useValue: realtime },
+      ],
+    }).compile();
+    service = moduleRef.get(MembershipsService);
+  });
+
+  it('answers 403 when the caller is no ACTIVE ADMIN (BR-31/32)', async () => {
+    tx.membership.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.approve(COMMUNITY_ID, 'membership-1', USER_ID),
+    ).rejects.toEqual(
+      new ForbiddenException('You are not a member of this community'),
+    );
+    expect(tx.membership.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 for a missing join request (BR-25, BR-33)', async () => {
+    tx.membership.updateMany.mockResolvedValue({ count: 0 });
+    tx.membership.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.approve(COMMUNITY_ID, 'membership-1', USER_ID),
+    ).rejects.toEqual(new NotFoundException('Join request not found'));
+    expect(notifications.createMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 for a join request of another community (BR-33)', async () => {
+    tx.membership.updateMany.mockResolvedValue({ count: 0 });
+    tx.membership.findUnique.mockResolvedValue({
+      communityId: '9f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d',
+    });
+
+    await expect(
+      service.approve(COMMUNITY_ID, 'membership-1', USER_ID),
+    ).rejects.toEqual(new NotFoundException('Join request not found'));
+    expect(notifications.createMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when the request is no longer pending (BR-25, E-1)', async () => {
+    tx.membership.updateMany.mockResolvedValue({ count: 0 });
+    tx.membership.findUnique.mockResolvedValue({ communityId: COMMUNITY_ID });
+
+    await expect(
+      service.reject(COMMUNITY_ID, 'membership-1', USER_ID),
+    ).rejects.toEqual(
+      new BadRequestException('Join request is no longer pending'),
+    );
+    expect(notifications.createMany).not.toHaveBeenCalled();
+  });
+
+  it('approves to ACTIVE WARGA and notifies the requester (BR-25, BR-66)', async () => {
+    const result = await service.approve(
+      COMMUNITY_ID,
+      'membership-1',
+      'admin-1',
+    );
+
+    expect(result.status).toBe('ACTIVE');
+    expect(result.role).toBe('WARGA');
+    expect(result.user).toEqual(requesterUser());
+    const [updateCall] = tx.membership.updateMany.mock.calls[0] as [
+      { where: Record<string, unknown>; data: Record<string, unknown> },
+    ];
+    expect(updateCall.where).toEqual({
+      id: 'membership-1',
+      communityId: COMMUNITY_ID,
+      status: 'PENDING',
+    });
+    expect(updateCall.data.status).toBe('ACTIVE');
+    expect(updateCall.data.role).toBe('WARGA');
+    expect(updateCall.data.decidedAt).toBeInstanceOf(Date);
+    expect(updateCall.data.joinedAt).toBeInstanceOf(Date);
+    expect(notifications.createMany).toHaveBeenCalledWith(tx, {
+      userIds: [USER_ID],
+      communityId: COMMUNITY_ID,
+      type: 'JOIN_APPROVED',
+      entityId: 'membership-1',
+      context: { label: 'RT001/RW006' },
+    });
+    // After the commit: the in-app event reaches the requester only (BR-69).
+    expect(realtime.emitToUsers).toHaveBeenCalledWith(
+      [USER_ID],
+      'notification:new',
+      {
+        type: 'JOIN_APPROVED',
+        communityId: COMMUNITY_ID,
+        entityId: 'membership-1',
+      },
+    );
+  });
+
+  it('rejects to REJECTED WARGA without touching joinedAt (BR-25)', async () => {
+    // The re-read after the conditional update mirrors the new status.
+    tx.membership.findUnique.mockResolvedValue({
+      ...activeRow(),
+      status: 'REJECTED',
+    });
+    const result = await service.reject(
+      COMMUNITY_ID,
+      'membership-1',
+      'admin-1',
+    );
+
+    expect(result.status).toBe('REJECTED');
+    const [updateCall] = tx.membership.updateMany.mock.calls[0] as [
+      { where: Record<string, unknown>; data: Record<string, unknown> },
+    ];
+    expect(updateCall.where).toEqual({
+      id: 'membership-1',
+      communityId: COMMUNITY_ID,
+      status: 'PENDING',
+    });
+    expect(updateCall.data.status).toBe('REJECTED');
+    expect(updateCall.data.role).toBe('WARGA');
+    expect(updateCall.data.decidedAt).toBeInstanceOf(Date);
+    expect(updateCall.data).not.toHaveProperty('joinedAt');
+    expect(notifications.createMany).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ type: 'JOIN_REJECTED', userIds: [USER_ID] }),
+    );
+    expect(realtime.emitToUsers).toHaveBeenCalledWith(
+      [USER_ID],
+      'notification:new',
+      {
+        type: 'JOIN_REJECTED',
+        communityId: COMMUNITY_ID,
+        entityId: 'membership-1',
+      },
     );
   });
 });
