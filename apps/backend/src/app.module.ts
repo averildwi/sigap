@@ -11,6 +11,7 @@ import { projectEnvSchema } from './config/env.schema';
 import { buildThrottlerOptions } from './config/throttle.config';
 import { CommunitiesModule } from './communities/communities.module';
 import { HealthModule } from './health/health.module';
+import { MembershipsModule } from './memberships/memberships.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -28,6 +29,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     AuthModule,
     CommunitiesModule,
+    MembershipsModule,
     HealthModule,
     NotificationsModule,
   ],

@@ -25,6 +25,16 @@ export type NotificationRow = Prisma.NotificationGetPayload<{
   select: typeof notificationSelect;
 }>;
 
+/** Same view plus the recipient, so an emitter can route per user. */
+export const createdNotificationSelect = {
+  ...notificationSelect,
+  userId: true,
+} satisfies Prisma.NotificationSelect;
+
+export type CreatedNotification = Prisma.NotificationGetPayload<{
+  select: typeof createdNotificationSelect;
+}>;
+
 /** The Prisma client a notification write runs on (inside a caller's transaction). */
 export type NotificationTxClient = Pick<
   Prisma.TransactionClient,
@@ -48,18 +58,20 @@ export class NotificationsService {
    * Write side (BR-65/66): one event -> one row per recipient, written
    * inside the caller's transaction with `tx`. The texts come from the
    * pure template function; no service writes literal texts (API_SPEC 8).
+   * Returns the rows so the caller can emit the documented NotificationView
+   * after the commit (BR-69).
    */
   async createMany(
     tx: NotificationTxClient,
     input: NotificationFanoutInput,
-  ): Promise<void> {
-    if (input.userIds.length === 0) return;
+  ): Promise<CreatedNotification[]> {
+    if (input.userIds.length === 0) return [];
 
     const { title, body, entityType } = buildNotificationText(
       input.type,
       input.context,
     );
-    await tx.notification.createMany({
+    return tx.notification.createManyAndReturn({
       data: input.userIds.map((userId) => ({
         userId,
         communityId: input.communityId,
@@ -69,6 +81,7 @@ export class NotificationsService {
         entityType,
         entityId: input.entityId,
       })),
+      select: createdNotificationSelect,
     });
   }
 
