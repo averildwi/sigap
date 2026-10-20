@@ -266,15 +266,17 @@ Content of the appended section (`repo:AGENTS.md`):
 
 | Step | Status |
 |---|---|
-| 0 Turborepo root (workspaces, turbo.json, .gitignore, docs) | todo |
-| 1 Apps + backend scaffolds (nest, nest-prisma, nest-common, skills) | todo |
-| 2 Config + env + throttle tiers + health | todo |
-| 3 Prisma schema + migration + seed | todo |
-| 4 Auth (port, otp, strategy, flows, change-password, logout-all, meta-test, e2e) | todo |
-| 5 Communities (+ shared region/access helpers) | todo |
-| 6 Notifications (templates, service, gateway, endpoints) | todo |
+| 0 Turborepo root (workspaces, turbo.json, .gitignore, docs) | done |
+| 1 Apps + backend scaffolds (nest, nest-prisma, nest-common, skills) | done |
+| 2 Config + env + throttle tiers + health | done |
+| 3 Prisma schema + migration + seed | done |
+| 4 Auth (port, otp, strategy, flows, change-password, logout-all, meta-test, e2e) | done |
+| 5 Communities (+ shared region/access helpers) | done |
+| 6 Notifications (templates, service, gateway, endpoints) | done |
 | 7 Memberships (token, preview/join, queue, decisions, admin ops) | todo |
 | 8 Announcements | todo |
 | 9 Reports | todo |
 | 10 SOS (mailer, send, lists, transitions) | todo |
 | 11 Final pass (e2e, README, full workspace verify) | todo |
+
+Snapshot of what exists (updated 2026-10-20): see `docs/PROJECT_STATUS.md`.
