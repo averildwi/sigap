@@ -298,22 +298,37 @@ describe('AnnouncementsService.update', () => {
     service = moduleRef.get(AnnouncementsService);
   });
 
-  it('answers 404 for a missing id, with the notification rows untouched (BR-33)', async () => {
+  it('answers 404 for a missing id and scopes the update to the community (BR-33)', async () => {
     tx.announcement.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
       service.update(COMMUNITY_ID, 'announcement-1', dto(), ADMIN_ID),
     ).rejects.toEqual(new NotFoundException(ANNOUNCEMENT_NOT_FOUND_MESSAGE));
-    expect(tx.notification.deleteMany).not.toHaveBeenCalled();
+    // The conditional update carries communityId, so a foreign id matches 0.
+    expect(tx.announcement.updateMany).toHaveBeenCalledWith({
+      where: { id: 'announcement-1', communityId: COMMUNITY_ID },
+      data: { title: 'Kerja bakti Senin' },
+    });
+    expect(tx.announcement.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 
-  it('answers 404 for an id of another community, identical to a missing id (BR-33)', async () => {
-    tx.announcement.updateMany.mockResolvedValue({ count: 0 });
+  it('answers 404 for a foreign id even when the edit clears a highlight (BR-33, BR-36)', async () => {
+    tx.announcement.updateMany
+      .mockResolvedValueOnce({ count: 1 }) // the clear of this community's highlight
+      .mockResolvedValueOnce({ count: 0 }); // the foreign id never matches
+
+    const highlight = plainToInstance(UpdateAnnouncementDto, {
+      isHighlight: true,
+    });
 
     await expect(
-      service.update(COMMUNITY_ID, 'announcement-1', dto(), ADMIN_ID),
+      service.update(COMMUNITY_ID, 'announcement-1', highlight, ADMIN_ID),
     ).rejects.toEqual(new NotFoundException(ANNOUNCEMENT_NOT_FOUND_MESSAGE));
+    // Both writes ran inside the transaction; throwing rolls the clear back.
+    expect(tx.announcement.updateMany).toHaveBeenCalledTimes(2);
     expect(tx.announcement.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(notifications.createMany).not.toHaveBeenCalled();
+    expect(realtime.emitToUsers).not.toHaveBeenCalled();
   });
 
   it('answers 403 for a caller who is not an ACTIVE ADMIN (BR-31/32)', async () => {
@@ -363,6 +378,31 @@ describe('AnnouncementsService.update', () => {
       data: { title: 'Kerja bakti Senin' },
     });
     expect(realtime.emitToUsers).not.toHaveBeenCalled();
+  });
+
+  it('unsets the highlight without clearing the other rows (BR-36)', async () => {
+    const unhighlight = plainToInstance(UpdateAnnouncementDto, {
+      isHighlight: false,
+    });
+
+    await service.update(COMMUNITY_ID, 'announcement-1', unhighlight, ADMIN_ID);
+
+    expect(tx.announcement.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.announcement.updateMany).toHaveBeenCalledWith({
+      where: { id: 'announcement-1', communityId: COMMUNITY_ID },
+      data: { isHighlight: false },
+    });
+  });
+
+  it('accepts an empty edit as a no-op conditional update', async () => {
+    const empty = plainToInstance(UpdateAnnouncementDto, {});
+
+    await service.update(COMMUNITY_ID, 'announcement-1', empty, ADMIN_ID);
+
+    expect(tx.announcement.updateMany).toHaveBeenCalledWith({
+      where: { id: 'announcement-1', communityId: COMMUNITY_ID },
+      data: {},
+    });
   });
 });
 
@@ -610,6 +650,9 @@ describe('UpdateAnnouncementDto / QueryAnnouncementsDto (BR-35, BR-39)', () => {
         plainToInstance(UpdateAnnouncementDto, { isHighlight: true }),
       ),
     ).toEqual([]);
+    expect(validateSync(plainToInstance(UpdateAnnouncementDto, {}))).toEqual(
+      [],
+    );
     const wrong = validateSync(
       plainToInstance(UpdateAnnouncementDto, { title: 'no' }),
     );
