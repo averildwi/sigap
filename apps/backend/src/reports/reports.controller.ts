@@ -1,9 +1,13 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -19,6 +23,7 @@ import {
 import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { QueryMyReportsDto } from './dto/query-my-reports.dto';
+import { UpdateReportDto } from './dto/update-report.dto';
 
 /**
  * Route order per API_SPEC 6: `reports/me` before `reports/:reportId`.
@@ -62,6 +67,43 @@ export class ReportsController {
       query,
     );
     return new Paginated(result.data, result.meta);
+  }
+
+  @Patch(':reportId')
+  @ApiOperation({
+    summary: '[AUTH] Edit my pending report',
+    description:
+      'Any ACTIVE member (service check); edit is restricted to the reporter while PENDING (service checks). A foreign report is the same 404 as a missing one; not PENDING is 400 (BR-50).',
+  })
+  async update(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: UpdateReportDto,
+  ) {
+    const report = await this.reportsService.update(
+      communityId,
+      reportId,
+      dto,
+      userId,
+    );
+    return new MessageResponse(report, 'Report updated');
+  }
+
+  @Delete(':reportId')
+  @ApiOperation({
+    summary: '[AUTH] Delete my pending report',
+    description:
+      'Any ACTIVE member (service check); delete is restricted to the reporter while PENDING (service checks). Its notifications are removed in the same transaction (BR-50).',
+  })
+  @HttpCode(HttpStatus.OK)
+  async remove(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    await this.reportsService.remove(communityId, reportId, userId);
+    return new MessageResponse(null, 'Report deleted');
   }
 
   @Get(':reportId')

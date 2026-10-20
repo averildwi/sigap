@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
@@ -12,6 +16,7 @@ import {
 } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { QueryMyReportsDto } from './dto/query-my-reports.dto';
+import { UpdateReportDto } from './dto/update-report.dto';
 
 const COMMUNITY_ID = '5f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
 const REPORTER_ID = '6f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
@@ -335,6 +340,192 @@ describe('ReportsService.findOne', () => {
     const view = await service.findOne(COMMUNITY_ID, REPORT_ID, REPORTER_ID);
 
     expect(view.reporter.houseBlock).toBeNull();
+  });
+});
+
+describe('ReportsService.update', () => {
+  let tx: {
+    membership: { findMany: jest.Mock };
+    report: {
+      updateMany: jest.Mock;
+      findFirst: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+    };
+  };
+  let prisma: { $transaction: jest.Mock; membership: { findFirst: jest.Mock } };
+  let service: ReportsService;
+
+  const dto = (extra: Partial<{ title: string; category: string }> = {}) =>
+    plainToInstance(UpdateReportDto, {
+      title: 'Lampu jalan mati (blok C)',
+      ...extra,
+    });
+
+  beforeEach(async () => {
+    tx = {
+      membership: {
+        // The reporter's membership row: read back for the house block.
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ userId: REPORTER_ID, houseBlock: 'B-12' }]),
+      },
+      report: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findFirst: jest.fn().mockResolvedValue({
+          reporterId: REPORTER_ID,
+          status: 'RESOLVED',
+        }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(REPORT_ROW),
+      },
+    };
+    prisma = {
+      // Interactive transaction: run the callback with the mocked tx client.
+      $transaction: jest.fn((cb: (client: unknown) => Promise<unknown>) =>
+        cb(tx),
+      ),
+      membership: {
+        findFirst: jest.fn().mockResolvedValue(membershipRow('MEMBER')),
+      },
+    };
+    ({ service } = await buildModule(prisma));
+  });
+
+  it('rejects a caller who is not an ACTIVE member (BR-31) before any write', async () => {
+    prisma.membership.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.update(COMMUNITY_ID, REPORT_ID, dto(), REPORTER_ID),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.report.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps the write away when a status change raced in (400 only after the re-read, BR-50)', async () => {
+    // The conditional update missed: another request moved the report.
+    tx.report.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.update(COMMUNITY_ID, REPORT_ID, dto(), REPORTER_ID),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.report.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: REPORT_ID,
+        communityId: COMMUNITY_ID,
+        reporterId: REPORTER_ID,
+        status: 'PENDING',
+      },
+      data: { title: 'Lampu jalan mati (blok C)' },
+    });
+  });
+
+  it("answers 404 when the report is missing, foreign or not the caller's (BR-49)", async () => {
+    tx.report.updateMany.mockResolvedValue({ count: 0 });
+    tx.report.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.update(COMMUNITY_ID, REPORT_ID, dto(), REPORTER_ID),
+    ).rejects.toEqual(new NotFoundException(REPORT_NOT_FOUND_MESSAGE));
+
+    tx.report.findFirst.mockResolvedValue({
+      reporterId: 'someone-else',
+      status: 'PENDING',
+    });
+    await expect(
+      service.update(COMMUNITY_ID, REPORT_ID, dto(), REPORTER_ID),
+    ).rejects.toEqual(new NotFoundException(REPORT_NOT_FOUND_MESSAGE));
+  });
+
+  it("updates the caller's PENDING report and reads the view back (F-REPORTS-4)", async () => {
+    const view = await service.update(
+      COMMUNITY_ID,
+      REPORT_ID,
+      dto(),
+      REPORTER_ID,
+    );
+
+    expect(tx.report.findUniqueOrThrow).toHaveBeenCalledWith({
+      where: { id: REPORT_ID },
+      select: reportSelect,
+    });
+    expect(view.reporter.houseBlock).toBe('B-12');
+  });
+});
+
+describe('ReportsService.remove', () => {
+  let tx: {
+    notification: { deleteMany: jest.Mock };
+    report: { deleteMany: jest.Mock; findFirst: jest.Mock };
+  };
+  let prisma: { $transaction: jest.Mock; membership: { findFirst: jest.Mock } };
+  let service: ReportsService;
+
+  beforeEach(async () => {
+    tx = {
+      notification: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      report: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findFirst: jest.fn().mockResolvedValue({
+          reporterId: REPORTER_ID,
+          status: 'RESOLVED',
+        }),
+      },
+    };
+    prisma = {
+      // Interactive transaction: run the callback with the mocked tx client.
+      $transaction: jest.fn((cb: (client: unknown) => Promise<unknown>) =>
+        cb(tx),
+      ),
+      membership: {
+        findFirst: jest.fn().mockResolvedValue(membershipRow('MEMBER')),
+      },
+    };
+    ({ service } = await buildModule(prisma));
+  });
+
+  it('rejects a caller who is not an ACTIVE member (BR-31) before any write', async () => {
+    prisma.membership.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.remove(COMMUNITY_ID, REPORT_ID, REPORTER_ID),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.report.deleteMany).not.toHaveBeenCalled();
+    expect(tx.notification.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when the report is no longer PENDING (BR-50)', async () => {
+    tx.report.deleteMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.remove(COMMUNITY_ID, REPORT_ID, REPORTER_ID),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.report.deleteMany).toHaveBeenCalledWith({
+      where: {
+        id: REPORT_ID,
+        communityId: COMMUNITY_ID,
+        reporterId: REPORTER_ID,
+        status: 'PENDING',
+      },
+    });
+  });
+
+  it('answers 404 for a missing or foreign report (BR-49)', async () => {
+    tx.report.deleteMany.mockResolvedValue({ count: 0 });
+    tx.report.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.remove(COMMUNITY_ID, REPORT_ID, REPORTER_ID),
+    ).rejects.toEqual(new NotFoundException(REPORT_NOT_FOUND_MESSAGE));
+  });
+
+  it('removes the notifications in the same transaction before the delete (BR-50)', async () => {
+    await service.remove(COMMUNITY_ID, REPORT_ID, REPORTER_ID);
+
+    expect(tx.notification.deleteMany).toHaveBeenCalledWith({
+      where: { entityType: 'REPORT', entityId: REPORT_ID },
+    });
+    const notificationOrder =
+      tx.notification.deleteMany.mock.invocationCallOrder[0];
+    const reportOrder = tx.report.deleteMany.mock.invocationCallOrder[0];
+    expect(notificationOrder).toBeLessThan(reportOrder);
   });
 });
 

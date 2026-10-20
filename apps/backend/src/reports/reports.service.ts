@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   Prisma,
   ReportCategory,
@@ -14,6 +18,7 @@ import {
 } from '../notifications/realtime.gateway';
 import { CreateReportDto } from './dto/create-report.dto';
 import { QueryMyReportsDto } from './dto/query-my-reports.dto';
+import { UpdateReportDto } from './dto/update-report.dto';
 
 /** BR-49: missing id, a foreign community and a foreign report are one 404. */
 export const REPORT_NOT_FOUND_MESSAGE = 'Report not found';
@@ -207,6 +212,96 @@ export class ReportsService {
         )?.houseBlock ?? null)
       : null;
     return toReportView(report, houseBlock);
+  }
+
+  /**
+   * F-REPORTS-4 / BR-50: the reporter edits only while PENDING. The
+   * conditional update is both the state and the race guard; a miss is
+   * re-read once to pick 404 (missing / foreign / not the caller's) or
+   * 400 (no longer PENDING).
+   */
+  async update(
+    communityId: string,
+    reportId: string,
+    dto: UpdateReportDto,
+    userId: string,
+  ): Promise<ReportView> {
+    await assertMember(this.prisma, userId, communityId);
+    return this.prisma.$transaction(async (tx) => {
+      const data: {
+        title?: string;
+        description?: string;
+        category?: ReportCategory;
+      } = {};
+      if (dto.title !== undefined) data.title = dto.title;
+      if (dto.description !== undefined) data.description = dto.description;
+      if (dto.category !== undefined) data.category = dto.category;
+
+      const updated = await tx.report.updateMany({
+        where: {
+          id: reportId,
+          communityId,
+          reporterId: userId,
+          status: 'PENDING',
+        },
+        data,
+      });
+      if (updated.count === 0) {
+        const report = await tx.report.findFirst({
+          where: { id: reportId, communityId },
+          select: { reporterId: true, status: true },
+        });
+        if (!report || report.reporterId !== userId) {
+          throw new NotFoundException(REPORT_NOT_FOUND_MESSAGE);
+        }
+        throw new BadRequestException('Only pending reports can be changed');
+      }
+      const row = await tx.report.findUniqueOrThrow({
+        where: { id: reportId },
+        select: reportSelect,
+      });
+      const houseBlocks = await loadReporterHouseBlocks(tx, communityId, [
+        row.reporter.id,
+      ]);
+      return toReportView(row, houseBlocks.get(row.reporter.id) ?? null);
+    });
+  }
+
+  /**
+   * F-REPORTS-5 / BR-50: the report's notifications are removed before the
+   * conditional delete (count 0 -> 404/400) rolls everything back, so
+   * notifications never outlive the report. Same 404-vs-400 re-read as
+   * update.
+   */
+  async remove(
+    communityId: string,
+    reportId: string,
+    userId: string,
+  ): Promise<void> {
+    await assertMember(this.prisma, userId, communityId);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.notification.deleteMany({
+        where: { entityType: 'REPORT', entityId: reportId },
+      });
+      const deleted = await tx.report.deleteMany({
+        where: {
+          id: reportId,
+          communityId,
+          reporterId: userId,
+          status: 'PENDING',
+        },
+      });
+      if (deleted.count === 0) {
+        const report = await tx.report.findFirst({
+          where: { id: reportId, communityId },
+          select: { reporterId: true, status: true },
+        });
+        if (!report || report.reporterId !== userId) {
+          throw new NotFoundException(REPORT_NOT_FOUND_MESSAGE);
+        }
+        throw new BadRequestException('Only pending reports can be changed');
+      }
+    });
   }
 
   /** After-commit emit helper shared with later commits (BR-69). */
