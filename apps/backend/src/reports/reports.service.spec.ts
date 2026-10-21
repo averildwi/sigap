@@ -208,6 +208,11 @@ describe('ReportsService.create', () => {
       'notification:new',
       withoutRecipient(notificationRow(ADMIN_ID)),
     );
+    expect(realtime.emitToUsers).toHaveBeenCalledWith(
+      ['admin-2'],
+      'notification:new',
+      withoutRecipient(notificationRow('admin-2')),
+    );
   });
 });
 
@@ -323,6 +328,14 @@ describe('ReportsService.findOne', () => {
 
     await expect(
       service.findOne(COMMUNITY_ID, REPORT_ID, 'warga-1'),
+    ).rejects.toEqual(new NotFoundException(REPORT_NOT_FOUND_MESSAGE));
+  });
+
+  it('answers 404 for a caller who is not a member of the community (BR-49)', async () => {
+    prisma.membership.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.findOne(COMMUNITY_ID, REPORT_ID, 'stranger-1'),
     ).rejects.toEqual(new NotFoundException(REPORT_NOT_FOUND_MESSAGE));
   });
 
@@ -518,16 +531,16 @@ describe('ReportsService.remove', () => {
     ).rejects.toEqual(new NotFoundException(REPORT_NOT_FOUND_MESSAGE));
   });
 
-  it('removes the notifications in the same transaction before the delete (BR-50)', async () => {
+  it('removes the notifications in the same transaction after the delete (BR-50)', async () => {
     await service.remove(COMMUNITY_ID, REPORT_ID, REPORTER_ID);
 
     expect(tx.notification.deleteMany).toHaveBeenCalledWith({
       where: { entityType: 'REPORT', entityId: REPORT_ID },
     });
+    const reportOrder = tx.report.deleteMany.mock.invocationCallOrder[0];
     const notificationOrder =
       tx.notification.deleteMany.mock.invocationCallOrder[0];
-    const reportOrder = tx.report.deleteMany.mock.invocationCallOrder[0];
-    expect(notificationOrder).toBeLessThan(reportOrder);
+    expect(reportOrder).toBeLessThan(notificationOrder);
   });
 });
 
@@ -760,6 +773,57 @@ describe('ReportsService.changeStatus', () => {
       respondedById: ADMIN_ID,
     });
     expect(respondedAt).toBeInstanceOf(Date);
+  });
+
+  it('rejects with the required note and overwrites the response fields (BR-51)', async () => {
+    const rejected = { ...REPORT_ROW, status: 'REJECTED' };
+    tx.report.findUniqueOrThrow.mockResolvedValue(rejected);
+
+    const view = await service.changeStatus(
+      'REJECTED',
+      COMMUNITY_ID,
+      REPORT_ID,
+      'Duplikat laporan nomor 12.',
+      ADMIN_ID,
+    );
+
+    const [call] = tx.report.updateMany.mock.calls[0] as [
+      { where: Record<string, unknown>; data: Record<string, unknown> },
+    ];
+    expect(call.where).toEqual({
+      id: REPORT_ID,
+      communityId: COMMUNITY_ID,
+      status: { in: ['PENDING', 'IN_PROGRESS'] },
+    });
+    const { respondedAt, ...data } = call.data;
+    expect(data).toEqual({
+      status: 'REJECTED',
+      responseNote: 'Duplikat laporan nomor 12.',
+      respondedById: ADMIN_ID,
+    });
+    expect(respondedAt).toBeInstanceOf(Date);
+    expect(view.status).toBe('REJECTED');
+  });
+
+  it('labels the REPORT_STATUS notification with the target status (BR-51, BR-52)', async () => {
+    const pending = { ...REPORT_ROW, status: 'PENDING' };
+    tx.report.findUniqueOrThrow.mockResolvedValue(pending);
+
+    await service.changeStatus(
+      'IN_PROGRESS',
+      COMMUNITY_ID,
+      REPORT_ID,
+      undefined,
+      ADMIN_ID,
+    );
+
+    expect(notifications.createMany).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        type: 'REPORT_STATUS',
+        context: { title: 'Lampu jalan mati', reportStatus: 'IN_PROGRESS' },
+      }),
+    );
   });
 
   it('replaces the note on a resolve so it names the latest change (BR-51)', async () => {

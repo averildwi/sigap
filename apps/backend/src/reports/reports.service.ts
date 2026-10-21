@@ -15,6 +15,7 @@ import {
 import { paginate, PaginatedResult } from '../common/helpers/paginate.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import type { CreatedNotification } from '../notifications/notifications.service';
 import {
   REALTIME_EVENTS,
   RealtimeGateway,
@@ -285,10 +286,10 @@ export class ReportsService {
   }
 
   /**
-   * F-REPORTS-5 / BR-50: the report's notifications are removed before the
-   * conditional delete (count 0 -> 404/400) rolls everything back, so
-   * notifications never outlive the report. Same 404-vs-400 re-read as
-   * update.
+   * F-REPORTS-5 / BR-50: the conditional delete is both the state and the
+   * ownership check; a miss is re-read once to pick 404 (missing / foreign /
+   * not the caller's) or 400 (no longer PENDING). The notification delete
+   * shares the transaction, so neither write survives without the other.
    */
   async remove(
     communityId: string,
@@ -297,9 +298,6 @@ export class ReportsService {
   ): Promise<void> {
     await assertMember(this.prisma, userId, communityId);
     await this.prisma.$transaction(async (tx) => {
-      await tx.notification.deleteMany({
-        where: { entityType: 'REPORT', entityId: reportId },
-      });
       const deleted = await tx.report.deleteMany({
         where: {
           id: reportId,
@@ -318,6 +316,9 @@ export class ReportsService {
         }
         throw new BadRequestException('Only pending reports can be changed');
       }
+      await tx.notification.deleteMany({
+        where: { entityType: 'REPORT', entityId: reportId },
+      });
     });
   }
 
@@ -407,7 +408,7 @@ export class ReportsService {
         where: { id: reportId },
         select: reportSelect,
       });
-      let createdNotifications: unknown[] = [];
+      let createdNotifications: CreatedNotification[] = [];
       if (row.reporter.id !== userId) {
         createdNotifications = await this.notifications.createMany(tx, {
           userIds: [row.reporter.id],
@@ -432,12 +433,8 @@ export class ReportsService {
   }
 
   /** After-commit emit helper shared with later commits (BR-69). */
-  private emitNotifications(created: unknown[]): void {
-    for (const notification of created) {
-      const { userId: recipientId, ...view } = notification as {
-        userId: string;
-        [key: string]: unknown;
-      };
+  private emitNotifications(created: CreatedNotification[]): void {
+    for (const { userId: recipientId, ...view } of created) {
       this.realtime.emitToUsers(
         [recipientId],
         REALTIME_EVENTS.notificationNew,
