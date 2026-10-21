@@ -434,10 +434,10 @@ export class ReportsService {
   /** After-commit emit helper shared with later commits (BR-69). */
   private emitNotifications(created: unknown[]): void {
     for (const notification of created) {
-      const { userId: recipientId, ...view } = notification as Record<
-        string,
-        unknown
-      >;
+      const { userId: recipientId, ...view } = notification as {
+        userId: string;
+        [key: string]: unknown;
+      };
       this.realtime.emitToUsers(
         [recipientId],
         REALTIME_EVENTS.notificationNew,
