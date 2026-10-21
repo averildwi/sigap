@@ -16,6 +16,8 @@ import {
 } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { QueryMyReportsDto } from './dto/query-my-reports.dto';
+import { QueryReportsDto } from './dto/query-reports.dto';
+import { RejectReportDto } from './dto/reject-report.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
 
 const COMMUNITY_ID = '5f0c6c1e-1e2f-4a5b-8c9d-0e1f2a3b4c5d';
@@ -529,6 +531,313 @@ describe('ReportsService.remove', () => {
   });
 });
 
+describe('ReportsService.findAll', () => {
+  let prisma: {
+    $transaction: jest.Mock;
+    report: { findMany: jest.Mock; count: jest.Mock };
+    membership: { findFirst: jest.Mock; findMany: jest.Mock };
+  };
+  let service: ReportsService;
+
+  const query = (extra: Record<string, string> = {}) =>
+    plainToInstance(QueryReportsDto, extra);
+
+  beforeEach(async () => {
+    prisma = {
+      // Array transaction: list and count share the batch.
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+      report: {
+        findMany: jest.fn().mockResolvedValue([REPORT_ROW]),
+        count: jest.fn().mockResolvedValue(1),
+      },
+      membership: {
+        findFirst: jest.fn().mockResolvedValue(membershipRow('ADMIN')),
+        // Batched house block read for every distinct reporter.
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ userId: REPORTER_ID, houseBlock: 'B-12' }]),
+      },
+    };
+    ({ service } = await buildModule(prisma));
+  });
+
+  it('rejects a caller who is not an ACTIVE ADMIN (BR-32) before any read', async () => {
+    prisma.membership.findFirst.mockResolvedValue(membershipRow('MEMBER'));
+
+    await expect(
+      service.findAll(COMMUNITY_ID, REPORTER_ID, query()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.report.findMany).not.toHaveBeenCalled();
+  });
+
+  it('lists every report filtered by status and category with the search (F-REPORTS-6, BR-32)', async () => {
+    const q = query({
+      status: 'PENDING',
+      category: 'INFRASTRUCTURE',
+      search: 'lampu',
+    });
+    await service.findAll(COMMUNITY_ID, ADMIN_ID, q);
+
+    expect(prisma.report.findMany).toHaveBeenCalledWith({
+      where: {
+        communityId: COMMUNITY_ID,
+        status: 'PENDING',
+        category: 'INFRASTRUCTURE',
+        title: { contains: 'lampu', mode: 'insensitive' },
+      },
+      select: reportSelect,
+      orderBy: { createdAt: 'desc' },
+      skip: 0,
+      take: 20,
+    });
+    expect(prisma.report.count).toHaveBeenCalledWith({
+      where: {
+        communityId: COMMUNITY_ID,
+        status: 'PENDING',
+        category: 'INFRASTRUCTURE',
+        title: { contains: 'lampu', mode: 'insensitive' },
+      },
+    });
+  });
+
+  it("reads every reporter's house block in one batched query (no N+1)", async () => {
+    const result = await service.findAll(COMMUNITY_ID, ADMIN_ID, query());
+
+    expect(prisma.membership.findMany).toHaveBeenCalledWith({
+      where: { communityId: COMMUNITY_ID, userId: { in: [REPORTER_ID] } },
+      select: { userId: true, houseBlock: true },
+    });
+    expect(result.data[0].reporter).toEqual({
+      id: REPORTER_ID,
+      name: 'Budi',
+      houseBlock: 'B-12',
+    });
+  });
+});
+
+describe('ReportsService.changeStatus', () => {
+  let tx: {
+    membership: { findFirst: jest.Mock; findMany: jest.Mock };
+    report: {
+      updateMany: jest.Mock;
+      findFirst: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+    };
+  };
+  let prisma: { $transaction: jest.Mock };
+  let notifications: { createMany: jest.Mock };
+  let realtime: { emitToUsers: jest.Mock };
+  let service: ReportsService;
+
+  beforeEach(async () => {
+    tx = {
+      membership: {
+        // One ACTIVE ADMIN row so assertAdmin passes by default.
+        findFirst: jest.fn().mockResolvedValue(membershipRow('ADMIN')),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ userId: REPORTER_ID, houseBlock: 'B-12' }]),
+      },
+      report: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // Default re-read answer: the report sat on RESOLVED.
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: REPORT_ID, status: 'RESOLVED' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(REPORT_ROW),
+      },
+    };
+    prisma = {
+      // Interactive transaction: run the callback with the mocked tx client.
+      $transaction: jest.fn((cb: (client: unknown) => Promise<unknown>) =>
+        cb(tx),
+      ),
+    };
+    ({ service, notifications, realtime } = await buildModule(prisma));
+  });
+
+  it('rejects a caller who is not an ACTIVE ADMIN (BR-32) before any write', async () => {
+    tx.membership.findFirst.mockResolvedValue(membershipRow('MEMBER'));
+
+    await expect(
+      service.changeStatus(
+        'IN_PROGRESS',
+        COMMUNITY_ID,
+        REPORT_ID,
+        undefined,
+        REPORTER_ID,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(tx.report.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 for a finished report: RESOLVED -> anything (BR-51)', async () => {
+    tx.report.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.changeStatus(
+        'IN_PROGRESS',
+        COMMUNITY_ID,
+        REPORT_ID,
+        undefined,
+        ADMIN_ID,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    const [call] = tx.report.updateMany.mock.calls[0] as [
+      { where: Record<string, unknown>; data: Record<string, unknown> },
+    ];
+    expect(call.where).toEqual({
+      id: REPORT_ID,
+      communityId: COMMUNITY_ID,
+      status: { in: ['PENDING'] },
+    });
+    const { respondedAt, ...data } = call.data;
+    expect(data).toEqual({
+      status: 'IN_PROGRESS',
+      responseNote: null,
+      respondedById: ADMIN_ID,
+    });
+    expect(respondedAt).toBeInstanceOf(Date);
+  });
+
+  it('answers 400 for an IN_PROGRESS report moved through process again (BR-51)', async () => {
+    tx.report.updateMany.mockResolvedValue({ count: 0 });
+    tx.report.findFirst.mockResolvedValue({
+      id: REPORT_ID,
+      status: 'IN_PROGRESS',
+    });
+
+    await expect(
+      service.changeStatus(
+        'IN_PROGRESS',
+        COMMUNITY_ID,
+        REPORT_ID,
+        undefined,
+        ADMIN_ID,
+      ),
+    ).rejects.toEqual(new BadRequestException('Invalid status change'));
+  });
+
+  it('answers 404 for a missing or foreign-community id (BR-33)', async () => {
+    tx.report.updateMany.mockResolvedValue({ count: 0 });
+    tx.report.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.changeStatus(
+        'IN_PROGRESS',
+        COMMUNITY_ID,
+        REPORT_ID,
+        undefined,
+        ADMIN_ID,
+      ),
+    ).rejects.toEqual(new NotFoundException(REPORT_NOT_FOUND_MESSAGE));
+  });
+
+  it('processes a PENDING report with a noteless change resetting the response note (F-REPORTS-7, BR-51)', async () => {
+    const pending = { ...REPORT_ROW, status: 'PENDING' };
+    tx.report.findUniqueOrThrow.mockResolvedValue(pending);
+
+    await service.changeStatus(
+      'IN_PROGRESS',
+      COMMUNITY_ID,
+      REPORT_ID,
+      undefined,
+      ADMIN_ID,
+    );
+
+    const [call] = tx.report.updateMany.mock.calls[0] as [
+      { where: Record<string, unknown>; data: Record<string, unknown> },
+    ];
+    expect(call.where).toEqual({
+      id: REPORT_ID,
+      communityId: COMMUNITY_ID,
+      status: { in: ['PENDING'] },
+    });
+    const { respondedAt, ...data } = call.data;
+    expect(data).toEqual({
+      status: 'IN_PROGRESS',
+      responseNote: null,
+      respondedById: ADMIN_ID,
+    });
+    expect(respondedAt).toBeInstanceOf(Date);
+  });
+
+  it('replaces the note on a resolve so it names the latest change (BR-51)', async () => {
+    await service.changeStatus(
+      'RESOLVED',
+      COMMUNITY_ID,
+      REPORT_ID,
+      'Lampu sudah dinyalakan.',
+      ADMIN_ID,
+    );
+
+    const [call] = tx.report.updateMany.mock.calls[0] as [
+      { where: Record<string, unknown>; data: Record<string, unknown> },
+    ];
+    expect(call.where).toEqual({
+      id: REPORT_ID,
+      communityId: COMMUNITY_ID,
+      status: { in: ['PENDING', 'IN_PROGRESS'] },
+    });
+    const { respondedAt, ...data } = call.data;
+    expect(data).toEqual({
+      status: 'RESOLVED',
+      responseNote: 'Lampu sudah dinyalakan.',
+      respondedById: ADMIN_ID,
+    });
+    expect(respondedAt).toBeInstanceOf(Date);
+  });
+
+  it('notifies the reporter with REPORT_STATUS after the commit (BR-52, BR-69)', async () => {
+    await service.changeStatus(
+      'RESOLVED',
+      COMMUNITY_ID,
+      REPORT_ID,
+      'Lampu sudah dinyalakan.',
+      ADMIN_ID,
+    );
+
+    const [txArg, input] = notifications.createMany.mock.calls[0] as [
+      unknown,
+      {
+        userIds: string[];
+        communityId: string;
+        type: string;
+        entityId: string;
+        context: Record<string, string>;
+      },
+    ];
+    expect(txArg).toBe(tx);
+    expect(input.userIds).toEqual([REPORTER_ID]);
+    expect(input.type).toBe('REPORT_STATUS');
+    expect(input.context).toEqual({
+      title: 'Lampu jalan mati',
+      reportStatus: 'RESOLVED',
+    });
+    expect(realtime.emitToUsers).toHaveBeenCalledWith(
+      [REPORTER_ID],
+      'notification:new',
+      withoutRecipient(notificationRow(REPORTER_ID)),
+    );
+  });
+
+  it('does not notify when the caller is the reporter themselves (BR-52)', async () => {
+    tx.membership.findFirst.mockResolvedValue(membershipRow('ADMIN'));
+
+    await service.changeStatus(
+      'RESOLVED',
+      COMMUNITY_ID,
+      REPORT_ID,
+      undefined,
+      REPORTER_ID,
+    );
+
+    expect(tx.report.updateMany).toHaveBeenCalled();
+    expect(notifications.createMany).not.toHaveBeenCalled();
+    expect(realtime.emitToUsers).not.toHaveBeenCalled();
+  });
+});
+
 describe('CreateReportDto (BR-48)', () => {
   const valid = {
     title: 'Lampu jalan mati',
@@ -554,5 +863,21 @@ describe('CreateReportDto (BR-48)', () => {
       }),
     );
     expect(bad).not.toEqual([]);
+  });
+});
+
+describe('RejectReportDto (BR-51)', () => {
+  it('requires a note of at least 5 characters', () => {
+    const bad = validateSync(plainToInstance(RejectReportDto, { note: '  ' }));
+    expect(bad).not.toEqual([]);
+
+    const missing = validateSync(plainToInstance(RejectReportDto, {}));
+    expect(missing).not.toEqual([]);
+
+    const good = plainToInstance(RejectReportDto, {
+      note: '  Duplikat laporan nomor 12.  ',
+    });
+    expect(good.note).toBe('Duplikat laporan nomor 12.');
+    expect(validateSync(good)).toEqual([]);
   });
 });

@@ -23,7 +23,11 @@ import {
 import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { QueryMyReportsDto } from './dto/query-my-reports.dto';
+import { QueryReportsDto } from './dto/query-reports.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
+import { ProcessReportDto } from './dto/process-report.dto';
+import { RejectReportDto } from './dto/reject-report.dto';
+import { ResolveReportDto } from './dto/resolve-report.dto';
 
 /**
  * Route order per API_SPEC 6: `reports/me` before `reports/:reportId`.
@@ -106,6 +110,25 @@ export class ReportsController {
     return new MessageResponse(null, 'Report deleted');
   }
 
+  @Get()
+  @ApiOperation({
+    summary: '[AUTH] List all reports of the community',
+    description:
+      'Caller must be an ACTIVE ADMIN of :communityId (service check, assertAdmin). Filterable by status and category, searchable by title, newest first (BR-32).',
+  })
+  async findAll(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @CurrentUser('id') userId: string,
+    @Query() query: QueryReportsDto,
+  ) {
+    const result = await this.reportsService.findAll(
+      communityId,
+      userId,
+      query,
+    );
+    return new Paginated(result.data, result.meta);
+  }
+
   @Get(':reportId')
   @ApiOperation({
     summary: '[AUTH] Get a report',
@@ -118,5 +141,74 @@ export class ReportsController {
     @CurrentUser('id') userId: string,
   ) {
     return this.reportsService.findOne(communityId, reportId, userId);
+  }
+
+  @Post(':reportId/process')
+  @ApiOperation({
+    summary: '[AUTH] Mark a report as in progress',
+    description:
+      'Caller must be an ACTIVE ADMIN of :communityId (service check, assertAdmin). Allowed from PENDING only (BR-51); the reporter is notified unless they are the caller (BR-52).',
+  })
+  @HttpCode(HttpStatus.OK)
+  async process(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: ProcessReportDto,
+  ) {
+    const report = await this.reportsService.changeStatus(
+      'IN_PROGRESS',
+      communityId,
+      reportId,
+      dto.note,
+      userId,
+    );
+    return new MessageResponse(report, 'Report marked as in progress');
+  }
+
+  @Post(':reportId/resolve')
+  @ApiOperation({
+    summary: '[AUTH] Resolve a report',
+    description:
+      'Caller must be an ACTIVE ADMIN of :communityId (service check, assertAdmin). Allowed from PENDING or IN_PROGRESS (BR-51); the notification rule matches process (BR-52).',
+  })
+  @HttpCode(HttpStatus.OK)
+  async resolve(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: ResolveReportDto,
+  ) {
+    const report = await this.reportsService.changeStatus(
+      'RESOLVED',
+      communityId,
+      reportId,
+      dto.note,
+      userId,
+    );
+    return new MessageResponse(report, 'Report resolved');
+  }
+
+  @Post(':reportId/reject')
+  @ApiOperation({
+    summary: '[AUTH] Reject a report',
+    description:
+      'Caller must be an ACTIVE ADMIN of :communityId (service check, assertAdmin). Allowed from PENDING or IN_PROGRESS and always carries a 5-1000 char note (BR-51).',
+  })
+  @HttpCode(HttpStatus.OK)
+  async reject(
+    @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: RejectReportDto,
+  ) {
+    const report = await this.reportsService.changeStatus(
+      'REJECTED',
+      communityId,
+      reportId,
+      dto.note,
+      userId,
+    );
+    return new MessageResponse(report, 'Report rejected');
   }
 }

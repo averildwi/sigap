@@ -8,7 +8,10 @@ import {
   ReportCategory,
   ReportStatus,
 } from '../../generated/prisma/client';
-import { assertMember } from '../common/helpers/community-access.helper';
+import {
+  assertAdmin,
+  assertMember,
+} from '../common/helpers/community-access.helper';
 import { paginate, PaginatedResult } from '../common/helpers/paginate.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -18,6 +21,7 @@ import {
 } from '../notifications/realtime.gateway';
 import { CreateReportDto } from './dto/create-report.dto';
 import { QueryMyReportsDto } from './dto/query-my-reports.dto';
+import { QueryReportsDto } from './dto/query-reports.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
 
 /** BR-49: missing id, a foreign community and a foreign report are one 404. */
@@ -72,6 +76,19 @@ export function toReportView(
   const { reporter, ...rest } = report;
   return { ...rest, reporter: { ...reporter, houseBlock: reporterHouseBlock } };
 }
+
+/**
+ * BR-51: the transitions of PRD 6.4 in Lite, keyed by the target status;
+ * anything else (RESOLVED/REJECTED/PENDING as target) is not an action.
+ */
+export const REPORT_ALLOWED_FROM: Record<
+  'IN_PROGRESS' | 'RESOLVED' | 'REJECTED',
+  ReportStatus[]
+> = {
+  IN_PROGRESS: ['PENDING'],
+  RESOLVED: ['PENDING', 'IN_PROGRESS'],
+  REJECTED: ['PENDING', 'IN_PROGRESS'],
+};
 
 /** The reporter's house block in one community, from one batched query. */
 export async function loadReporterHouseBlocks(
@@ -302,6 +319,116 @@ export class ReportsService {
         throw new BadRequestException('Only pending reports can be changed');
       }
     });
+  }
+
+  /**
+   * F-REPORTS-6 / BR-32: every report of the community, for ACTIVE ADMINs
+   * only, filterable by status and category, searched by title, newest first.
+   */
+  async findAll(
+    communityId: string,
+    userId: string,
+    query: QueryReportsDto,
+  ): Promise<PaginatedResult<ReportView>> {
+    await assertAdmin(this.prisma, userId, communityId);
+    const where: Prisma.ReportWhereInput = {
+      communityId,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.category ? { category: query.category } : {}),
+      ...(query.search
+        ? { title: { contains: query.search, mode: 'insensitive' } }
+        : {}),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.report.findMany({
+        where,
+        select: reportSelect,
+        orderBy: { createdAt: 'desc' },
+        skip: query.skip,
+        take: query.limit,
+      }),
+      this.prisma.report.count({ where }),
+    ]);
+    const reporterIds = [...new Set(rows.map((row) => row.reporter.id))];
+    const houseBlocks = await loadReporterHouseBlocks(
+      this.prisma,
+      communityId,
+      reporterIds,
+    );
+    return {
+      ...paginate(rows, total, query.page, query.limit),
+      data: rows.map((row) =>
+        toReportView(row, houseBlocks.get(row.reporter.id) ?? null),
+      ),
+    };
+  }
+
+  /**
+   * F-REPORTS-7 / BR-51/52: the admin status actions in one conditional
+   * update (state and race guard in the where), the allowed-from list coming
+   * from REPORT_ALLOWED_FROM. BR-51: the note is overwritten per change —
+   * none sent resets `responseNote` to null — with `respondedById` and
+   * `respondedAt` set together. BR-52: the reporter is notified unless the
+   * admin act is the reporter's own; `notification:new` goes out after the
+   * commit (BR-69).
+   */
+  async changeStatus(
+    target: 'IN_PROGRESS' | 'RESOLVED' | 'REJECTED',
+    communityId: string,
+    reportId: string,
+    note: string | undefined,
+    userId: string,
+  ): Promise<ReportView> {
+    const result = await this.prisma.$transaction(async (tx) => {
+      await assertAdmin(tx, userId, communityId);
+      const updated = await tx.report.updateMany({
+        where: {
+          id: reportId,
+          communityId,
+          status: { in: REPORT_ALLOWED_FROM[target] },
+        },
+        data: {
+          status: target,
+          responseNote: note ?? null,
+          respondedById: userId,
+          respondedAt: new Date(),
+        },
+      });
+      if (updated.count === 0) {
+        // Re-read: 404 for a missing or foreign id, 400 for a stale state.
+        const report = await tx.report.findFirst({
+          where: { id: reportId, communityId },
+          select: { id: true, status: true },
+        });
+        if (!report) throw new NotFoundException(REPORT_NOT_FOUND_MESSAGE);
+        throw new BadRequestException('Invalid status change');
+      }
+      const row = await tx.report.findUniqueOrThrow({
+        where: { id: reportId },
+        select: reportSelect,
+      });
+      let createdNotifications: unknown[] = [];
+      if (row.reporter.id !== userId) {
+        createdNotifications = await this.notifications.createMany(tx, {
+          userIds: [row.reporter.id],
+          communityId,
+          type: 'REPORT_STATUS',
+          entityId: reportId,
+          context: { title: row.title, reportStatus: target },
+        });
+      }
+      const houseBlocks = await loadReporterHouseBlocks(tx, communityId, [
+        row.reporter.id,
+      ]);
+      return {
+        view: toReportView(row, houseBlocks.get(row.reporter.id) ?? null),
+        createdNotifications,
+      };
+    });
+
+    // After the commit (BR-69): one event per recipient.
+    this.emitNotifications(result.createdNotifications);
+    return result.view;
   }
 
   /** After-commit emit helper shared with later commits (BR-69). */
