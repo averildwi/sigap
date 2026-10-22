@@ -3,17 +3,17 @@
 Source: `docs/PRD.md` rev 5.1 (Lite); no schema change from rev 5. Full v1 model archived in `docs/archive/full-v1/DATA_MODEL.md`.
 Conventions: `nest-prisma` (naming, `@@map`, both timestamps, explicit `onDelete`, uuid ids, Prisma 7 `prisma-client` generator) and `nest-auth-and-security` rule 11 (`OtpCode`). Not restated.
 
-Decisions taken from the PRD: ID type `uuid` (`@db.Uuid`, `ParseUUIDPipe`), PostgreSQL, **no soft delete** (no account deletion in Lite), no app-wide role, no `tokenVersion` (deviation L-1, PRD 8.13), no Google login, no refresh tokens.
+Decisions taken from the [PRD](PRD.md): ID type `uuid` (`@db.Uuid`, `ParseUUIDPipe`), PostgreSQL, **no soft delete** (no account deletion in Lite), no app-wide role, no `tokenVersion` (deviation L-1, [PRD](PRD.md) 8.13), no Google login, no refresh tokens.
 
 ## 1. Design notes
 
 | # | Note | Why |
 |---|---|---|
-| N-1 | No app-wide role column. Every account is a normal user; community permissions come only from `Membership.role` (`ADMIN` \| `WARGA`) | PRD rev 5: one global role. `AuthUser.role` is filled with the literal `'USER'` (PRD 8.13 L-2). |
-| N-2 | No owner. "At least one ACTIVE ADMIN per community" (BR-27) is checked in the service before demote / remove / leave | PRD rev 5 dropped owner and transfer. |
-| N-3 | Highlight = `Announcement.isHighlight Boolean`. Setting it runs `updateMany({ communityId, isHighlight: true } -> false)` then the create/update, in one `$transaction` | BR-36 Lite. Two parallel highlights can both end up true (GAPS G-L4); accepted. |
+| N-1 | No app-wide role column. Every account is a normal user; community permissions come only from `Membership.role` (`ADMIN` \| `WARGA`) | [PRD](PRD.md) rev 5: one global role. `AuthUser.role` is filled with the literal `'USER'` ([PRD](PRD.md) 8.13 L-2). |
+| N-2 | No owner. "At least one ACTIVE ADMIN per community" (BR-27) is checked in the service before demote / remove / leave | [PRD](PRD.md) rev 5 dropped owner and transfer. |
+| N-3 | Highlight = `Announcement.isHighlight Boolean`. Setting it runs `updateMany({ communityId, isHighlight: true } -> false)` then the create/update, in one `$transaction` | BR-36 Lite. Two parallel highlights can both end up true ([GAPS](GAPS.md) G-L4); accepted. |
 | N-4 | Race safety = **conditional `updateMany`**: the `where` contains the expected current status (and the actor where relevant); `count === 0` means another request won or the state is wrong -> re-read for 404 vs 400 | Replaces the full-v1 guard columns and row locks. Used for join approve/reject, SOS accept/handle/resolve/false-alarm/cancel, report status changes, report edit/delete. |
-| N-5 | "One open SOS per sender per community" (BR-55) = `findFirst` before `create`; a double tap racing in the same millisecond may create two (GAPS G-L3) | Lite simplification. |
+| N-5 | "One open SOS per sender per community" (BR-55) = `findFirst` before `create`; a double tap racing in the same millisecond may create two ([GAPS](GAPS.md) G-L3) | Lite simplification. |
 | N-6 | `Membership.requestedAt` is separate from `createdAt` | The row is reused for every new join request (BR-23). |
 | N-7 | `regionKey` = `${rt}:${rw}:${norm(village)}:${norm(district)}:${norm(city)}:${norm(province)}` from a pure helper (`src/common/helpers/region-key.helper.ts`); unique on `Community` | BR-12. A collision on create is P2002, rethrown as 409 with the BR-14 message. |
 | N-8 | Notifications point to their entity with `entityType` + `entityId` (no FK) | Deletes of announcements/reports remove their notifications in the same transaction (BR-38, BR-50). |
@@ -340,7 +340,7 @@ Per `nest-auth-and-security` rule 15 (no default password, idempotent, not in `s
   - `tamu@sigap.test`: no membership (for the scan demo).
 - Content: 3 announcements (1 highlighted), 4 reports by the WARGA accounts covering `PENDING`, `IN_PROGRESS`, `RESOLVED`, `REJECTED` (with response notes).
 - Uses `HashingService`-compatible scrypt hashing (same `salt:hash` format) so seeded users can log in.
-- No super admin (PRD rev 5).
+- No super admin ([PRD](PRD.md) rev 5).
 
 ## 6. Not in Lite
 

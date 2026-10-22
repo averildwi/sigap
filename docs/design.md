@@ -13,7 +13,7 @@
 1. **Civic Trust & Reassurance (*Ketenteraman Warga*):** Mengedepankan rasa aman, transparan, dan inklusif. Antarmuka dirancang untuk warga dengan rentang literasi digital yang beragam.
 2. **Keterbacaan & Kecepatan Respons:** Informasi genting (SOS) dan pengumuman resmi harus langsung terbaca dalam 2 detik pertama tanpa gangguan dekorasi visual berlebihan.
 3. **Pemisahan Jelas Antara Aksi Biasa & Darurat:** Fitur harian menggunakan palet emerald/hijau yang menenangkan, sementara aksi SOS menggunakan warna merah crimson kontras tinggi yang terisolasi secara visual.
-4. **Fidelitas Ketat Terhadap PRD Lite:** Tidak ada fitur yang diada-adakan di luar scope (tidak ada upload foto/berkas, tidak ada family card/KK, tidak ada payment/chat langsung).
+4. **Fidelitas Ketat Terhadap [PRD](PRD.md) Lite:** Tidak ada fitur yang diada-adakan di luar scope (tidak ada upload foto/berkas, tidak ada family card/KK, tidak ada payment/chat langsung).
 
 ---
 
@@ -116,7 +116,7 @@
   - Aksi cepat satu klik: *Setujui (Warga)* (hijau) & *Tolak* (merah).
 - **Direktori Warga & Pengelolaan Peran (F-MEMBERSHIPS-10, 11):**
   - Tabel responsif dengan pencarian nama & filter blok rumah.
-  - Validasi aturan PRD: Pengurus terakhir tidak dapat dikeluarkan atau demote dirinya sendiri.
+  - Validasi aturan [PRD](PRD.md): Pengurus terakhir tidak dapat dikeluarkan atau demote dirinya sendiri.
 
 ### C. Laporan Warga Komunitas (F-REPORTS-1 .. 7)
 - **Tampilan Split-View (Daftar & Detail Respons):**

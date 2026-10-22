@@ -136,7 +136,7 @@ Semua di bawah `/api`. Semua respons dibungkus envelope
 | Pagination | Query `page` (default 1), `limit` (default 20, max 100); list memakai `meta` di envelope |
 | Label komunitas | `RT001/RW006` dihitung server (`formatLabel`) |
 | Region | Kota **wajib** mulai dengan `Kota`/`Kabupaten`/`Kab` → frontend sebaiknya pakai select Kota/Kabupaten (G-L15) |
-| Status enum (di code) | Membership `PENDING/ACTIVE/REJECTED/LEFT/REMOVED`; Report `PENDING/IN_PROGRESS/RESOLVED/REJECTED`; SOS `SENT/ACCEPTED/HANDLING/RESOLVED/CANCELLED/FALSE_ALARM`; label Indonesia ada di PRD §3 |
+| Status enum (di code) | Membership `PENDING/ACTIVE/REJECTED/LEFT/REMOVED`; Report `PENDING/IN_PROGRESS/RESOLVED/REJECTED`; SOS `SENT/ACCEPTED/HANDLING/RESOLVED/CANCELLED/FALSE_ALARM`; label Indonesia ada di [PRD](PRD.md) §3 |
 | Notifikasi | 9 tipe (`JOIN_REQUEST`, `JOIN_APPROVED`, `JOIN_REJECTED`, `ANNOUNCEMENT`, `REPORT_NEW`, `REPORT_STATUS`, `SOS_NEW`, `SOS_ACCEPTED`, `SOS_RESOLVED`), teks sudah Indonesia via `notification-templates.ts` |
 | Thumbnail/foto | Tidak ada upload apa pun di Lite (report JSON-only) |
 | Admin check | Di sisi service (`assertMember`/`assertAdmin`); semua route hanya `[PUBLIC]`/`[AUTH]` — frontend tidak bisa mengandalkan 401 vs 403 untuk membedakan admin/warga (403 'Admin access required') |

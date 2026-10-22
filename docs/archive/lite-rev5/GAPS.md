@@ -1,6 +1,6 @@
 # GAPS (Lite)
 
-Gaps and small contradictions found while cutting to Lite (PRD rev 5). Each line: gap -> simplest option chosen.
+Gaps and small contradictions found while cutting to Lite ([PRD](PRD.md) rev 5). Each line: gap -> simplest option chosen.
 
 | # | Gap | Chosen option |
 |---|---|---|

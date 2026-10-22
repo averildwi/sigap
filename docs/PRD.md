@@ -18,7 +18,7 @@ Deployment hardening, regions as free text, scope cut for 5 days. Details in `do
 | R-19 | No BFF gate, no client-IP header, no socket ticket. Throttle = standard per-IP `@nestjs/throttler`. Socket.IO uses the JWT in `handshake.auth.token` | 8.4, 8.6, 8.11, 8.13, BR-77..81 |
 | R-20 | No `tokenVersion`, no change-password, no logout-all, no account deletion, no privacy consent field | F-AUTH-6/7, F-USERS-3, BR-4..8, 8.13 L-1 |
 | R-21 | No uploads (report is JSON only), no audit log, no SOS history, no SOS hourly limit, no expiry job | BR-26, 48, 56, 61, 70, 71 |
-| R-22 | Race safety = conditional `updateMany` only | 8.2, DATA_MODEL N-4 |
+| R-22 | Race safety = conditional `updateMany` only | 8.2, [DATA_MODEL](DATA_MODEL.md) N-4 |
 | R-23 | Email: OTP (required) and `SOS_NEW` to recipient admins (fire-and-log); `JOIN_APPROVED` email optional. Transport changed to Resend in R-27 | F-NOTIFICATIONS-6, BR-68, 8.7 |
 | R-24 | Notifications simplified: list, unread count, read, read-all; 9 types | F-NOTIFICATIONS-1..3, BR-65, BR-66 |
 | R-25 | SOS escalation reduced to one level and moved to **[STRETCH]** | F-SOS-7, BR-63 |
@@ -33,20 +33,20 @@ Deployment hardening, regions as free text, scope cut for 5 days. Details in `do
 | R-29 | F-MEMBERSHIPS-2 back in Lite as "Preview a scanned QR" (`POST /memberships/preview`, read-only); join stays one step, no join ticket | 0.1, 2.2, 4.4, 11, BR-20, BR-80, E-11 |
 | R-30 | Manual fallback is the full `qrContent` string with a copy button, pasted into the join screen | F-MEMBERSHIPS-1, A-3 |
 | R-31 | Notification and email texts defined (5.9.1); SOS email carries no GPS, note or phone | 5.9.1, BR-68, 8.7 |
-| R-32 | GAPS G-L12, G-L13 added; G-L6, G-L9 updated | `docs/GAPS.md` |
+| R-32 | [GAPS](GAPS.md) G-L12, G-L13 added; G-L6, G-L9 updated | `docs/GAPS.md` |
 
 ### Revision 5.2 (Lite, after SPEC_AUDIT)
 
 | # | Change | Where |
 |---|---|---|
 | R-33 | Skill auth restored: `User.globalRole`, `isActive`, `tokenVersion`; JWT `{ sub, email, tv }`; change-password and logout-all back in Lite; reset/change/logout-all end every session. L-1, L-2 removed | 0, 0.1, F-AUTH-6/7, BR-5, 2.1, 8.1, 8.13, E-39 |
-| R-34 | Community-admin routes are labelled `[AUTH]` (no `@Roles`), the admin check is named in the Swagger `description`; the route-guard meta-test is used unchanged. L-4 removed | 2.2, 8.13, API_SPEC 0.1 |
+| R-34 | Community-admin routes are labelled `[AUTH]` (no `@Roles`), the admin check is named in the Swagger `description`; the route-guard meta-test is used unchanged. L-4 removed | 2.2, 8.13, [API_SPEC](API_SPEC.md) 0.1 |
 | R-35 | Mail follows the skill: `OTP_SENDER` port + adapters, env `OTP_SENDER` (default `resend`), `RESEND_API_KEY`, `MAIL_FROM`; SOS email through a separate `SosMailer` in `src/common/mail/`. L-3 removed. `JOIN_APPROVED` email dropped (in-app + realtime only) | 8.7, 8.12, BR-68, F-NOTIFICATIONS-6, F-MEMBERSHIPS-5 |
 | R-36 | Throttle defaults = skill rule 10 (auth 5, send-code 3), plus env-tunable join (10) and SOS (5) tiers; `THROTTLE_TTL` seconds converted to ms. Deviation L-5 (tiers instead of literal `@Throttle` numbers) | BR-80, 8.4, 8.12 |
-| R-37 | SOS: `handle` only from ACCEPTED, `resolve` only from HANDLING (HANDLING stays mandatory); re-read order 404 -> 403 -> 400 | 6.5, BR-58, API_SPEC 7 |
+| R-37 | SOS: `handle` only from ACCEPTED, `resolve` only from HANDLING (HANDLING stays mandatory); re-read order 404 -> 403 -> 400 | 6.5, BR-58, [API_SPEC](API_SPEC.md) 7 |
 | R-38 | Socket.IO reuses `JwtStrategy.validate` and takes CORS from `FRONTEND_URL` (skill recipe); `SOCKET_ALLOWED_ORIGINS` removed. New `APP_URL` for links in emails | BR-77, BR-81, 8.6, 8.12 |
-| R-39 | BR-12 normalisation per field and per leading word (no more "Kelapa Gading" -> "apagading"; "Kota X" and "Kab. X" stay different) | BR-12, DATA_MODEL N-7 |
-| R-40 | The last ADMIN cannot leave and the community cannot be deleted (decision, GAPS G-L14) | BR-27, E-19 |
+| R-39 | BR-12 normalisation per field and per leading word (no more "Kelapa Gading" -> "apagading"; "Kota X" and "Kab. X" stay different) | BR-12, [DATA_MODEL](DATA_MODEL.md) N-7 |
+| R-40 | The last ADMIN cannot leave and the community cannot be deleted (decision, [GAPS](GAPS.md) G-L14) | BR-27, E-19 |
 | R-41 | Smaller fixes: BR-9 digit count, BR-11 exceptions, BR-23 conditional reuse (E-8), BR-51 note rule, BR-83/BR-84 added, verified badge dropped, SC-2 measured manually, seed admin email from env | 1, 4, 5, 8.14 |
 
 ## 0. Recorded decisions
@@ -292,7 +292,7 @@ Format: **ID** (breakdown ref) - goal. *Actor.* Acceptance criteria (Given / Whe
 
 **F-MEMBERSHIPS-8** (JON-08) Leave a community. *MEMBER.*
 - Given I am ACTIVE and not the last ADMIN, when I leave, then my membership becomes LEFT, my role is reset to WARGA and I lose access immediately.
-- Given I am the last ACTIVE ADMIN, then I get 400 'Promote another admin first'. This also holds when I am the only member: the community cannot be left without an admin and cannot be deleted in Lite (GAPS G-L14). I can still create or join other communities.
+- Given I am the last ACTIVE ADMIN, then I get 400 'Promote another admin first'. This also holds when I am the only member: the community cannot be left without an admin and cannot be deleted in Lite ([GAPS](GAPS.md) G-L14). I can still create or join other communities.
 
 **F-MEMBERSHIPS-9** (JON-09) Remove a member. *C-ADMIN.*
 - Given an ACTIVE member who is not me and not the last ACTIVE ADMIN, when I remove them, then the membership becomes REMOVED with role WARGA.
@@ -466,7 +466,7 @@ Each rule is one unit-test target. "Open SOS" = status `SENT`, `ACCEPTED` or `HA
 | BR-24 | The join request stores the house block (1-50 characters, required) and `requestedAt`. (IP hash: **[PHASE 2]**.) |
 | BR-25 | Approve and reject work only on PENDING (conditional update; a lost race is 400 'Join request is no longer pending') and set `decidedAt`. Approve sets ACTIVE, role `WARGA`, `joinedAt = now`. |
 | BR-26 | **[PHASE 2]** Expiry of PENDING requests after 7 days. |
-| BR-27 | Every community keeps at least one ACTIVE ADMIN. Demoting, removing or leaving that would leave none is refused with 400 ('Promote another admin first' for leave, 'A community needs at least one admin' for role change / remove). This applies even when the last admin is the only member; Lite has no community deletion (decision rev 5.2, GAPS G-L14). |
+| BR-27 | Every community keeps at least one ACTIVE ADMIN. Demoting, removing or leaving that would leave none is refused with 400 ('Promote another admin first' for leave, 'A community needs at least one admin' for role change / remove). This applies even when the last admin is the only member; Lite has no community deletion (decision rev 5.2, [GAPS](GAPS.md) G-L14). |
 | BR-28 | An admin may remove any ACTIVE member except themselves (400, use leave) and except the last ADMIN (BR-27). Removal sets REMOVED, role WARGA, `decidedAt = now`. |
 | BR-29 | An admin may set the role of an ACTIVE member to ADMIN or WARGA, including their own, subject to BR-27. A non-ACTIVE member is 400. |
 | BR-30 | LEFT and REMOVED reset role to `WARGA`. Access stops on the next request because every community call re-reads the membership. |
@@ -573,7 +573,7 @@ No `JOIN_APPROVED` email in Lite (R-35).
 | BR-79 | **[PHASE 2]** Client IP header. |
 | BR-80 | Throttle per IP (`req.ip` with `trust proxy = TRUST_PROXY_HOPS`), handler level, never class level. Window `THROTTLE_TTL` seconds (default 60), passed to the throttler as `THROTTLE_TTL * 1000` ms. Named throttlers, each limit from env with the skill rule 10 value as default: `default` = `THROTTLE_LIMIT` (100) for every route; `auth` = `AUTH_THROTTLE_LIMIT` (5) on register, login, verify-otp, forgot-password, reset-password, change-password; `sendCode` = `SEND_CODE_THROTTLE_LIMIT` (3) on resend-otp; `join` = `JOIN_THROTTLE_LIMIT` (10) on `POST /memberships/preview` and `POST /memberships`; `sos` = `SOS_THROTTLE_LIMIT` (5) on SOS send. The venue raises them in `.env` only (deviation L-5). |
 | BR-81 | Socket.IO CORS allows only the origins in `FRONTEND_URL` (same list as REST, through the recipe's `FrontendCorsIoAdapter`; empty = refuse all). |
-| BR-82 | **[DIBUANG di Lite]** Handler protection (no owner / release in Lite; a demoted handler simply loses the right to move the SOS, BR-58, GAPS G-L1). |
+| BR-82 | **[DIBUANG di Lite]** Handler protection (no owner / release in Lite; a demoted handler simply loses the right to move the SOS, BR-58, [GAPS](GAPS.md) G-L1). |
 | BR-83 | Profile responses (`GET /auth/me`, `PATCH /auth/me`) use one explicit `profileSelect`: `id, email, name, phone, globalRole, emailVerifiedAt, createdAt`. `passwordHash`, `tokenVersion`, `isActive` and OTP hashes never leave the service (skill rule 17). |
 | BR-84 | `GET /health` runs `SELECT 1`; success -> 200 `{ status: 'ok' }`; any database error -> 503 'Service unavailable', with the error logged and not returned. |
 
@@ -682,8 +682,8 @@ Closed states (RESOLVED, CANCELLED, FALSE_ALARM) set `closedAt` and are final. A
 
 ### 8.2 Tenant isolation and race safety
 - Every community call carries the community id in the path and is checked per BR-31..33.
-- Race safety by conditional `updateMany` (DATA_MODEL N-4).
-- One e2e flow proves the happy path and one cross-tenant check (API_SPEC 14).
+- Race safety by conditional `updateMany` ([DATA_MODEL](DATA_MODEL.md) N-4).
+- One e2e flow proves the happy path and one cross-tenant check ([API_SPEC](API_SPEC.md) 14).
 
 ### 8.3 Pagination
 - Every list is paginated with the shared pagination contract (default 20, max 100).
@@ -771,8 +771,8 @@ L-1..L-4 of rev 5.1 are removed (R-33..R-35). The full-v1 deviations D-1..D-5 (B
 | E-3 | **[PHASE 2]** RSVP race | - | - |
 | E-4 | **[PHASE 2]** Application approval race | - | - |
 | E-5 | Two creates for the same RT/RW, or the same RT/RW with a different spelling ("Kel. Suka Maju" vs "sukamaju") | one created, the other 409 | BR-12, BR-14 |
-| E-6 | Two highlights set at once | may briefly leave two highlighted; next highlight fixes it (GAPS G-L4) | BR-36 |
-| E-7 | Double-tap on "send SOS" | second request 409 (open SOS exists); an exact-same-millisecond race may create two (GAPS G-L3) | BR-55 |
+| E-6 | Two highlights set at once | may briefly leave two highlighted; next highlight fixes it ([GAPS](GAPS.md) G-L4) | BR-36 |
+| E-7 | Double-tap on "send SOS" | second request 409 (open SOS exists); an exact-same-millisecond race may create two ([GAPS](GAPS.md) G-L3) | BR-55 |
 | E-8 | Double submit of a join request | exactly one PENDING row and one set of `JOIN_REQUEST` notifications; the other request gets 409 (conditional reuse / unique index) | BR-23 |
 | E-9 | **[STRETCH]** Escalation job on restart | claim with `escalatedAt: null` sends once | BR-63 |
 | E-10 | **[PHASE 2]** 3-PENDING race | - | - |
@@ -786,7 +786,7 @@ L-1..L-4 of rev 5.1 are removed (R-33..R-35). The full-v1 deviations D-1..D-5 (B
 | E-18 | Removed member reuses an old token | token still valid for the account, but every community call is 403 | BR-30, BR-31 |
 | E-19 | Last admin (also when they are the only member) tries to leave or demote themselves | 400 'Promote another admin first' / 'A community needs at least one admin'; no community deletion in Lite (G-L14) | BR-27 |
 | E-20 | Sender is the only admin and sends SOS | SOS created with `recipientCount = 0`; frontend highlights 112 | BR-62 |
-| E-21 | Handler is demoted or removed while handling an SOS | they can no longer move it (403); the sender can cancel and resend; another admin can mark it false alarm only while SENT (GAPS G-L1) | BR-58, BR-60 |
+| E-21 | Handler is demoted or removed while handling an SOS | they can no longer move it (403); the sender can cancel and resend; another admin can mark it false alarm only while SENT ([GAPS](GAPS.md) G-L1) | BR-58, BR-60 |
 | E-22..E-35 | **[PHASE 2]** (events, uploads, owner, take-over, BFF gate, socket ticket, per-email throttle, duplicates) | - | - |
 | E-36 | **[DIBUANG di Lite]** accept vs demote race | - | - |
 | E-37 | SOS sent while every admin has the app closed | in-app + realtime are missed; email reaches the admins; sender sees `recipientCount` and the 112 button | BR-62, BR-68 |
@@ -806,7 +806,7 @@ L-1..L-4 of rev 5.1 are removed (R-33..R-35). The full-v1 deviations D-1..D-5 (B
 - Impersonation of any kind (never planned).
 
 ### 10.2 Resolved questions
-All earlier questions (Q-1..Q-11, Q-A..Q-C) are resolved or no longer apply in Lite; see the archive. SPEC_AUDIT rev 5.1 questions, answered by the product owner: (1) restore `tokenVersion`, change-password, logout-all, `globalRole` / `isActive` -> yes (R-33); (2) throttle -> skill defaults, tuned in the venue `.env` (R-36); (3) last admin may not leave, even when alone -> yes, accepted gap (G-L14); (4) HANDLING is mandatory, fix the API (R-37); (5) `JOIN_APPROVED` email dropped (R-35).
+All earlier questions (Q-1..Q-11, Q-A..Q-C) are resolved or no longer apply in Lite; see the archive. [SPEC_AUDIT](SPEC_AUDIT.md) rev 5.1 questions, answered by the product owner: (1) restore `tokenVersion`, change-password, logout-all, `globalRole` / `isActive` -> yes (R-33); (2) throttle -> skill defaults, tuned in the venue `.env` (R-36); (3) last admin may not leave, even when alone -> yes, accepted gap (G-L14); (4) HANDLING is mandatory, fix the API (R-37); (5) `JOIN_APPROVED` email dropped (R-35).
 
 ### 10.3 Open questions
 None. Simplifications that leave small gaps are listed in `docs/GAPS.md`.
@@ -876,7 +876,7 @@ Column "Lite": ✓ = built, P2 = **[PHASE 2]**, D = **[DIBUANG di Lite]**, S = *
 | F-HEALTH-1 | ✓ | BR-84 | `src/health/` |
 | F-PLATFORM-1 | P2 | BR-78, BR-79 | - |
 
-Lite modules: `auth`, `users`, `communities`, `memberships`, `announcements`, `reports`, `sos-alerts`, `notifications`, `health` (51 REST endpoints + 1 WS namespace, API_SPEC 17).
+Lite modules: `auth`, `users`, `communities`, `memberships`, `announcements`, `reports`, `sos-alerts`, `notifications`, `health` (51 REST endpoints + 1 WS namespace, [API_SPEC](API_SPEC.md) 17).
 Cross-cutting: BR-31..33 (`community-access.helper.ts`, every community module), BR-80 (throttler), BR-68 (mail port).
 
 ---
