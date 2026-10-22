@@ -485,7 +485,7 @@ describe('MembershipsService.getJoinQr', () => {
     expect(view.token).toBe(CURRENT_TOKEN());
     expect(view.communityId).toBe(COMMUNITY_ID);
     expect(view.label).toBe('RT001/RW006');
-    expect(view.qrContent).toBe(`wargakita:join:${COMMUNITY_ID}:${view.token}`);
+    expect(view.qrContent).toBe(`sigap:join:${COMMUNITY_ID}:${view.token}`);
     expect(view.window).toBe(currentWindow(new Date()));
     // The dashed window always has seconds left for the refresh.
     expect(view.expiresInSeconds).toBeGreaterThanOrEqual(1);

@@ -60,9 +60,9 @@ describe('join-token (BR-19/BR-20)', () => {
   });
 
   describe('buildQrContent', () => {
-    it('is the wargakita:join payload the frontend parses (API_SPEC 4)', () => {
+    it('is the sigap:join payload the frontend parses (API_SPEC 4)', () => {
       expect(buildQrContent(COMMUNITY_ID, 'token22')).toBe(
-        `wargakita:join:${COMMUNITY_ID}:token22`,
+        `sigap:join:${COMMUNITY_ID}:token22`,
       );
     });
   });

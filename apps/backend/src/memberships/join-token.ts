@@ -50,9 +50,9 @@ export function createJoinToken(
   return computeJoinToken(communityId, currentWindow(now), secret);
 }
 
-/** The QR payload of API_SPEC 4: `wargakita:join:<communityId>:<token>`. */
+/** The QR payload of API_SPEC 4: `sigap:join:<communityId>:<token>`. */
 export function buildQrContent(communityId: string, token: string): string {
-  return `wargakita:join:${communityId}:${token}`;
+  return `sigap:join:${communityId}:${token}`;
 }
 
 /**
