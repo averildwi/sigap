@@ -1,4 +1,4 @@
-# API_SPEC: WargaKita Lite
+# API_SPEC: SIGAP
 
 Source: `docs/PRD.md` rev 5.2 (Lite) and `docs/DATA_MODEL.md`. Full v1 spec archived in `docs/archive/full-v1/API_SPEC.md`; Lite rev 5 in `docs/archive/lite-rev5/API_SPEC.md`; Lite rev 5.1 in `docs/archive/lite-rev5.1/API_SPEC.md`. Items marked **[PHASE 2]** / **[DIBUANG di Lite]** / **[STRETCH]** in the PRD have no endpoint here (see section 10, "Not in Lite").
 
@@ -172,7 +172,7 @@ Join token (BR-19, BR-20), pure helper `src/memberships/join-token.ts`, unit-tes
 - `w = floor(nowSeconds / 60)`.
 - `token(communityId, w) = base64url(HMAC-SHA256(JOIN_TOKEN_SECRET, "qr:" + communityId + ":" + w)).slice(0, 22)`.
 - `isValid(communityId, token, now)` = matches `w` or `w - 1`, compared with `timingSafeEqual` on equal-length buffers (length mismatch -> false).
-- QR content: `wargakita:join:<communityId>:<token>` (not a URL). Manual fallback: the frontend shows the full `qrContent` string under the QR with a copy button; the join screen accepts the pasted string, parses `communityId` and `token`, and calls `POST /memberships/preview` (R-30). A token alone is not enough.
+- QR content: `sigap:join:<communityId>:<token>` (not a URL). Manual fallback: the frontend shows the full `qrContent` string under the QR with a copy button; the join screen accepts the pasted string, parses `communityId` and `token`, and calls `POST /memberships/preview` (R-30). A token alone is not enough.
 - The same `isValid` helper is used by `POST /memberships/preview` and `POST /memberships`.
 
 | Method | Path | Summary | Guard | Throttle | Success | Feature / BR |
@@ -516,7 +516,7 @@ Same list as PRD 8.12. Joi in `src/config/env.schema.ts` (project) or nest-commo
 | `OTP_RESEND_COOLDOWN_SECONDS` | `number().integer().min(0).default(60)` | `OtpService` |
 | `OTP_SENDER` | `string().valid('resend', 'console').default('resend')` (skill reference; `console` refuses production, rule 23) | `MailModule` factory (OTP + SOS) |
 | `RESEND_API_KEY` | `when('OTP_SENDER', { is: 'resend', then: string().required(), otherwise: string().allow('').optional() })` | `ResendOtpSender`, `ResendSosMailer` |
-| `MAIL_FROM` | same rule as `RESEND_API_KEY` (e.g. `"WargaKita <no-reply@averil.tech>"`) | `ResendOtpSender`, `ResendSosMailer` |
+| `MAIL_FROM` | same rule as `RESEND_API_KEY` (e.g. `"SIGAP <no-reply@averil.tech>"`) | `ResendOtpSender`, `ResendSosMailer` |
 | `THROTTLE_TTL` | `number().integer().min(1).default(60)` (seconds; passed as `* 1000` ms) | `ThrottlerModule.forRootAsync` |
 | `THROTTLE_LIMIT` | `number().integer().min(1).default(100)` | `default` throttler |
 | `AUTH_THROTTLE_LIMIT` | `number().integer().min(1).default(5)` | `auth` tier |

@@ -1,4 +1,4 @@
-# SPEC_AUDIT: WargaKita Lite (PRD rev 5.2, DATA_MODEL, API_SPEC)
+# SPEC_AUDIT: SIGAP (PRD rev 5.2, DATA_MODEL, API_SPEC)
 
 Auditor note: the rev 5.1 audit was produced by an independent reviewer subagent. For rev 5.2 the subagent runner returned empty results in three attempts, so this re-audit was performed **in the same session that wrote the fixes** — it is a mechanical verification pass (greps + reading every changed section against the skill files), **not independent**. Treat it as a pre-check; an independent audit is still worthwhile if time allows. Source of truth: the skills in the unpacked `@averildwi/nest-skills@1.0.2` package (AGENTS.md, git-workflow, nest-architecture, nest-auth-and-security + all 7 references, nest-prisma, nest-response-and-errors, nest-testing, nest-validation-and-config). Every rule number cited was grepped in those files.
 

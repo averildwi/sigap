@@ -1,4 +1,4 @@
-# PRD: WargaKita, multi-tenant RT/RW community platform (v1)
+# PRD: SIGAP, multi-tenant RT/RW community platform (v1)
 
 Status: APPROVED with revisions (rev 4). Source: `breakdown-fitur-lengkap-multi-tenant.md` + decisions recorded below.
 Conventions (envelope, guards, DTOs, Prisma, tests, git) are owned by the skills in `.claude/skills`; this PRD only describes WHAT the product does. Where it knowingly departs from a skill, the departure is listed in 8.13 (D-1..D-5).

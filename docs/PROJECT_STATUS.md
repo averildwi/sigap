@@ -1,4 +1,4 @@
-# PROJECT_STATUS: WargaKita Lite (per 20 Oktober 2026)
+# PROJECT_STATUS: SIGAP (per 20 Oktober 2026)
 
 Ringkasan kondisi repo **sebelum mulai mengerjakan halaman frontend**. Dasar
 dokumen: `docs/PRD.md` rev 5.2, `docs/API_SPEC.md`, `docs/DATA_MODEL.md`,
@@ -9,7 +9,7 @@ per git history terakhir (`feat/notifications` sudah di-merge).
 
 | Aspek | Nilai |
 |---|---|
-| Produk | WargaKita Lite — platform multi-tenant RT/RW (komunitas, keanggotaan QR, pengumuman, laporan, SOS, notifikasi) |
+| Produk | SIGAP — platform multi-tenant RT/RW (komunitas, keanggotaan QR, pengumuman, laporan, SOS, notifikasi) |
 | Monorepo | npm workspaces + Turborepo (`apps/backend`, `apps/web`, `packages/*`) |
 | Backend | NestJS 11 + Prisma 7 (adapter `pg`) + PostgreSQL, semua route di prefix `/api` |
 | Frontend | Next.js 16 + React 19 (`apps/web`) — **masih scaffold bawaan create-turbo, belum disentuh** |
@@ -150,8 +150,8 @@ Semua di bawah `/api`. Semua respons dibungkus envelope
 - 1 migration: `20261019012026_init`.
 - `prisma/seed.ts` (idempoten) butuh env `SEED_ADMIN_EMAIL` & `SEED_DEMO_PASSWORD`,
   lalu membuat:
-  - 4 akun terverifikasi: admin seed + `warga1@wargakita.test`,
-    `warga2@wargakita.test`, `tamu@wargakita.test` (password sama, demo).
+  - 4 akun terverifikasi: admin seed + `warga1@sigap.test`,
+    `warga2@sigap.test`, `tamu@sigap.test` (password sama, demo).
   - Komunitas demo **RT001/RW006 "Griya Asri"** (Kel. Sukamaju, Kec. Cimahi
     Tengah, Kota Cimahi, Jawa Barat) + 3 membership ACTIVE (1 admin, 2 warga).
   - 3 pengumuman (1 highlight) dan 4 laporan contoh (semua status: PENDING,

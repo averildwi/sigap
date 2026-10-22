@@ -1,4 +1,4 @@
-# API_SPEC: WargaKita Lite
+# API_SPEC: SIGAP
 
 Source: `docs/PRD.md` rev 5 (Lite) and `docs/DATA_MODEL.md`. Full v1 spec archived in `docs/archive/full-v1/API_SPEC.md`. Items marked **[PHASE 2]** / **[DIBUANG di Lite]** / **[STRETCH]** in the PRD have no endpoint here (see section 10, "Not in Lite").
 
@@ -160,7 +160,7 @@ Join token (BR-19, BR-20), pure helper `src/memberships/join-token.ts`, unit-tes
 - `w = floor(nowSeconds / 60)`.
 - `token(communityId, w) = base64url(HMAC-SHA256(JOIN_TOKEN_SECRET, "qr:" + communityId + ":" + w)).slice(0, 22)`.
 - `isValid(communityId, token, now)` = matches `w` or `w - 1`, compared with `timingSafeEqual` on equal-length buffers (length mismatch -> false).
-- QR content: `wargakita:join:<communityId>:<token>` (not a URL). The frontend shows the token under the QR as a typed fallback.
+- QR content: `sigap:join:<communityId>:<token>` (not a URL). The frontend shows the token under the QR as a typed fallback.
 
 | Method | Path | Summary | Guard | Throttle | Success | Feature / BR |
 |---|---|---|---|---|---|---|

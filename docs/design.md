@@ -1,5 +1,5 @@
-# DESIGN.md — WargaKita Lite UI/UX System Specification
-**Product:** WargaKita Lite (Multi-tenant RT/RW Community Platform)  
+# DESIGN.md — SIGAP UI/UX System Specification
+**Product:** SIGAP (Multi-tenant RT/RW Community Platform)  
 **Status:** Approved for Implementation (Competition Build 1–2 Days)  
 **Target Audience:** Indonesian Residents (*Warga*) and Neighborhood Administrators (*Pengurus RT/RW*)  
 **Primary Language:** Bahasa Indonesia  
@@ -72,7 +72,7 @@
 
 ### Desktop Layout Structure
 - **Persistent Left Sidebar (Width: 260px):**
-  - **Brand Header:** Logo resmi WargaKita Lite + indikator badge 'LITE'.
+  - **Brand Header:** Logo resmi SIGAP + indikator badge 'LITE'.
   - **Community Switcher Card:** Dropdown interaktif menampilkan komunitas terpilih (`RT 001 / RW 006`), wilayah (`Kel. Suka Maju`), dan badge peran user (`Pengurus (ADMIN)` atau `Warga (WARGA)`).
   - **Menu List:**
     1. *Beranda Komunitas* (Dashboard ringkas RT/RW)
@@ -110,7 +110,7 @@
 - **Dynamic QR Window (F-MEMBERSHIPS-1):**
   - Menampilkan QR dinamis dengan rotasi token per 60 detik (`HMAC-SHA256`).
   - Timer visual countdown (*"Berlaku 42 detik lagi"*).
-  - Fallback manual string penuh: `wargakita:join:<communityId>:<token>` lengkap dengan tombol "Salin Teks QR".
+  - Fallback manual string penuh: `sigap:join:<communityId>:<token>` lengkap dengan tombol "Salin Teks QR".
 - **Antrean Pendaftaran (F-MEMBERSHIPS-4, 5, 6):**
   - Kartu pemohon menampilkan nama, email, blok rumah, dan waktu submit.
   - Aksi cepat satu klik: *Setujui (Warga)* (hijau) & *Tolak* (merah).

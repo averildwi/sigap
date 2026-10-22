@@ -1,4 +1,4 @@
-# DATA_MODEL: WargaKita Lite
+# DATA_MODEL: SIGAP
 
 Source: `docs/PRD.md` rev 5.1 (Lite); no schema change from rev 5. Full v1 model archived in `docs/archive/full-v1/DATA_MODEL.md`.
 Conventions: `nest-prisma` (naming, `@@map`, both timestamps, explicit `onDelete`, uuid ids, Prisma 7 `prisma-client` generator) and `nest-auth-and-security` rule 11 (`OtpCode`). Not restated.
@@ -335,9 +335,9 @@ No pure pivot tables: `Membership` carries its own data, so it has both timestam
 Per `nest-auth-and-security` rule 15 (no default password, idempotent, not in `src/`):
 - Reads `SEED_DEMO_PASSWORD` from env and **fails when missing**. Seed-only, not in the boot schema.
 - Creates (only if the email does not exist yet), all with `emailVerifiedAt = now`:
-  - `admin@wargakita.test` "Pak Budi (Ketua RT)": creates community **RT 001/RW 006**, Kel. Sukamaju, Kec. Cimahi Tengah, Kota Cimahi, Jawa Barat, name "Griya Asri"; ACTIVE ADMIN, houseBlock "Blok A1 No. 1".
-  - `warga1@wargakita.test`, `warga2@wargakita.test`: ACTIVE WARGA with house blocks.
-  - `tamu@wargakita.test`: no membership (for the scan demo).
+  - `admin@sigap.test` "Pak Budi (Ketua RT)": creates community **RT 001/RW 006**, Kel. Sukamaju, Kec. Cimahi Tengah, Kota Cimahi, Jawa Barat, name "Griya Asri"; ACTIVE ADMIN, houseBlock "Blok A1 No. 1".
+  - `warga1@sigap.test`, `warga2@sigap.test`: ACTIVE WARGA with house blocks.
+  - `tamu@sigap.test`: no membership (for the scan demo).
 - Content: 3 announcements (1 highlighted), 4 reports by the WARGA accounts covering `PENDING`, `IN_PROGRESS`, `RESOLVED`, `REJECTED` (with response notes).
 - Uses `HashingService`-compatible scrypt hashing (same `salt:hash` format) so seeded users can log in.
 - No super admin (PRD rev 5).

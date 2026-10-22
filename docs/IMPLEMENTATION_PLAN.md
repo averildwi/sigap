@@ -1,4 +1,4 @@
-# IMPLEMENTATION_PLAN: WargaKita Lite backend (Turborepo monorepo)
+# IMPLEMENTATION_PLAN: SIGAP backend (Turborepo monorepo)
 
 Source: `docs/PRD.md` rev 5.2, `docs/DATA_MODEL.md`, `docs/API_SPEC.md`, `docs/SPEC_AUDIT.md` (READY), and the skills (git-workflow, nest-architecture, nest-prisma, nest-auth-and-security + references, nest-validation-and-config, nest-response-and-errors, nest-testing). No code is written by this plan.
 
@@ -242,7 +242,7 @@ Content of the appended section (`repo:AGENTS.md`):
 
 | Commit | Files | Delivers |
 |---|---|---|
-| `test(e2e): add the demo flow and the cross-tenant checks` | `test/wargakita.e2e-spec.ts` | the API_SPEC 14 e2e flow end-to-end incl. `handle` -> `resolve` and the SC-4 isolation check (admin A -> 403 on B), + E-40 |
+| `test(e2e): add the demo flow and the cross-tenant checks` | `test/sigap.e2e-spec.ts` | the API_SPEC 14 e2e flow end-to-end incl. `handle` -> `resolve` and the SC-4 isolation check (admin A -> 403 on B), + E-40 |
 | `docs(readme): document setup, env vars and deployment` | `apps/backend/README.md`, root `README.md`, `.env.example` final review | 20 env vars documented, Railway root directory note, seed instructions, venue `.env` throttle tuning (Q2) |
 | (no third commit) whole-workspace verification | — | at root: `npx turbo run lint test build --filter=backend` green; endpoint count 51 REST + 1 WS re-counted against API_SPEC 17 |
 

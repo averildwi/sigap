@@ -1,4 +1,4 @@
-# SPEC_AUDIT: WargaKita Lite (PRD rev 5.1, DATA_MODEL, API_SPEC)
+# SPEC_AUDIT: SIGAP (PRD rev 5.1, DATA_MODEL, API_SPEC)
 
 Auditor: independent reviewer (did not write the docs). Source of truth: the skills in `templates/` (AGENTS.md, git-workflow, nest-architecture, nest-auth-and-security + all 7 references, nest-prisma, nest-response-and-errors, nest-testing, nest-validation-and-config). If a doc conflicts with a skill, the skill wins, so a deviation listed in PRD 8.13 or GAPS.md is still a finding when it breaks a skill rule.
 All rule numbers cited below were checked against the skill files. All skill references the docs cite (nest-architecture 9-12, auth 1, 2, 5, 7, 10, 11, 12, 14, 15, 21, 23, 25, nest-prisma 2, 3, `references/per-resource-roles.md`) exist.

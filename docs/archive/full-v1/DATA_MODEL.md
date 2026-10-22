@@ -1,4 +1,4 @@
-# DATA_MODEL: WargaKita v1
+# DATA_MODEL: SIGAP v1
 
 Source: `docs/PRD.md` rev 4. Only v1 features (✓ in PRD section 11). **[PHASE 2]** entities (`Event`, `EventRsvp`, `PushSubscription`, photo/image/document columns) are not in this schema.
 Conventions: `nest-prisma` (naming, `@@map`, both timestamps, explicit `onDelete`, uuid ids, Prisma 7 `prisma-client` generator) and `nest-auth-and-security` rule 11 / 22 (`User`, `OtpCode`). Not restated.

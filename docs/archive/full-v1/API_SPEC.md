@@ -1,4 +1,4 @@
-# API_SPEC: WargaKita v1
+# API_SPEC: SIGAP v1
 
 Source: `docs/PRD.md` rev 4 (v1 features only, ✓ in PRD section 11) and `docs/DATA_MODEL.md`. **[PHASE 2]** features have no endpoints here.
 
@@ -242,7 +242,7 @@ Join tokens and codes (BR-19), computed in `src/memberships/join-token.ts` (pure
 - QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 chars.
 - Manual code = (first 6 bytes of HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"code:" + communityId + ":" + w`) as an integer) mod 10^8, zero-padded to 8 digits.
 - Valid for `w` and `w - 1`; compared with `timingSafeEqual` on equal-length buffers.
-- The QR **content** is the string `wargakita:join:<communityId>:<token>`, read by the in-app scanner (never a URL, so the token does not land in browser history or Vercel logs).
+- The QR **content** is the string `sigap:join:<communityId>:<token>`, read by the in-app scanner (never a URL, so the token does not land in browser history or Vercel logs).
 - Join ticket = JWT signed with `JOIN_TICKET_SECRET` (separate `JwtService.signAsync(..., { secret })` call), payload `{ purpose: 'join', sub, communityId, w, scannedAt }`, expiry 10 minutes (BR-21).
 
 | Method | Path | Summary | Guard | Roles | Throttle | Success | Feature / BR |

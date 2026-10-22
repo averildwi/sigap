@@ -1,4 +1,4 @@
-# DATA_MODEL: WargaKita Lite
+# DATA_MODEL: SIGAP
 
 Source: `docs/PRD.md` rev 5.2 (Lite); schema change from rev 5.1: `User` gains `globalRole`, `isActive`, `tokenVersion` (R-33, SPEC_AUDIT #2, #3). Full v1 model archived in `docs/archive/full-v1/DATA_MODEL.md`; Lite rev 5.1 in `docs/archive/lite-rev5.1/DATA_MODEL.md`.
 Conventions: `nest-prisma` (naming, `@@map`, both timestamps, explicit `onDelete`, uuid ids, Prisma 7 `prisma-client` generator) and `nest-auth-and-security` rule 11 (`OtpCode`) + rule 22 (`User` reference shape). Not restated.
@@ -344,8 +344,8 @@ Per `nest-auth-and-security` rule 15 (no default password, idempotent, not in `s
 - Reads `SEED_ADMIN_EMAIL` and `SEED_DEMO_PASSWORD` from env and **fails when either is missing**. Seed-only, not in the boot schema.
 - Creates (only if the email does not exist yet, never overwriting an existing row or password), all with `emailVerifiedAt = now` and `globalRole = USER`:
   - `SEED_ADMIN_EMAIL` "Pak Budi (Ketua RT)": creates community **RT 001/RW 006**, Kel. Sukamaju, Kec. Cimahi Tengah, Kota Cimahi, Jawa Barat, name "Griya Asri"; ACTIVE ADMIN, houseBlock "Blok A1 No. 1".
-  - `warga1@wargakita.test`, `warga2@wargakita.test`: ACTIVE WARGA with house blocks.
-  - `tamu@wargakita.test`: no membership (for the scan demo).
+  - `warga1@sigap.test`, `warga2@sigap.test`: ACTIVE WARGA with house blocks.
+  - `tamu@sigap.test`: no membership (for the scan demo).
 - Content: 3 announcements (1 highlighted), 4 reports by the WARGA accounts covering `PENDING`, `IN_PROGRESS`, `RESOLVED`, `REJECTED` (with response notes).
 - Hashes with the project's `HashingService` (imported from `src/common/hashing/`), not a re-implementation.
 

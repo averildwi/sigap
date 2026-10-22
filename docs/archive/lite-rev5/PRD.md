@@ -1,4 +1,4 @@
-# PRD: WargaKita Lite, multi-tenant RT/RW community platform
+# PRD: SIGAP, multi-tenant RT/RW community platform
 
 Status: APPROVED, **rev 5 (Lite)**, for a web-developer competition build of 1-2 days. Source: `breakdown-fitur-lengkap-multi-tenant.md` + decisions below. Full v1 (rev 4) is archived in `docs/archive/full-v1/PRD.md`.
 Conventions (envelope, guards, DTOs, Prisma, tests, git) are owned by the skills in `.claude/skills`; this PRD only describes WHAT the product does. Where Lite knowingly departs from a skill, the departure is listed in 8.13 (L-1..L-4).
@@ -231,7 +231,7 @@ Format: **ID** (breakdown ref) - goal. *Actor.* Acceptance criteria (Given / Whe
 ### 4.4 Module `memberships`
 
 **F-MEMBERSHIPS-1** (JON-01) Show the join QR. *C-ADMIN.*
-- Given I am an admin of the community, when I open the join screen, then I get the QR content (`wargakita:join:<communityId>:<token>`), the token on its own (shown as a typed fallback under the QR) and the seconds left in the current 60 s window.
+- Given I am an admin of the community, when I open the join screen, then I get the QR content (`sigap:join:<communityId>:<token>`), the token on its own (shown as a typed fallback under the QR) and the seconds left in the current 60 s window.
 - Given I am a WARGA or not a member, then I get 403.
 
 **F-MEMBERSHIPS-2** (JON-02, JON-03) **[DIBUANG di Lite]** Separate QR check with a join ticket; replaced by the one-step F-MEMBERSHIPS-3.
@@ -422,7 +422,7 @@ Each rule is one unit-test target. "Open SOS" = status `SENT`, `ACCEPTED` or `HA
 
 | ID | Rule |
 |---|---|
-| BR-19 | Time window `w = floor(unixSeconds / 60)`. QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 characters. The QR content is `wargakita:join:<communityId>:<token>`. No table stores tokens. (Manual 8-digit code: **[PHASE 2]**.) |
+| BR-19 | Time window `w = floor(unixSeconds / 60)`. QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 characters. The QR content is `sigap:join:<communityId>:<token>`. No table stores tokens. (Manual 8-digit code: **[PHASE 2]**.) |
 | BR-20 | A token is valid only for window `w` or `w - 1` of the community named in the request, compared with `timingSafeEqual`. An unknown community id and a wrong or older token give the same 400 'Invalid or expired code'. |
 | BR-21 | **[DIBUANG di Lite]** Join ticket. |
 | BR-22 | **[PHASE 2]** Limit of 3 PENDING requests. |

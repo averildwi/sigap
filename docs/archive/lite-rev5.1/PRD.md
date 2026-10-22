@@ -1,4 +1,4 @@
-# PRD: WargaKita Lite, multi-tenant RT/RW community platform
+# PRD: SIGAP, multi-tenant RT/RW community platform
 
 Status: APPROVED, **rev 5.1 (Lite)**, for a web-developer competition build of 1-2 days. Source: `breakdown-fitur-lengkap-multi-tenant.md` + decisions below. Full v1 (rev 4) is archived in `docs/archive/full-v1/PRD.md`; Lite rev 5 in `docs/archive/lite-rev5/PRD.md`.
 Conventions (envelope, guards, DTOs, Prisma, tests, git) are owned by the skills in `.claude/skills`; this PRD only describes WHAT the product does. Where Lite knowingly departs from a skill, the departure is listed in 8.13 (L-1..L-4).
@@ -242,7 +242,7 @@ Format: **ID** (breakdown ref) - goal. *Actor.* Acceptance criteria (Given / Whe
 ### 4.4 Module `memberships`
 
 **F-MEMBERSHIPS-1** (JON-01) Show the join QR. *C-ADMIN.*
-- Given I am an admin of the community, when I open the join screen, then I get the QR content (`wargakita:join:<communityId>:<token>`), the token and window on their own, and the seconds left in the current 60 s window.
+- Given I am an admin of the community, when I open the join screen, then I get the QR content (`sigap:join:<communityId>:<token>`), the token and window on their own, and the seconds left in the current 60 s window.
 - The manual fallback is the full `qrContent` string shown under the QR with a copy button; the join screen accepts that pasted string, the frontend parses the community id and token and calls the preview (F-MEMBERSHIPS-2). A token alone is not enough.
 - Given I am a WARGA or not a member, then I get 403.
 
@@ -437,7 +437,7 @@ Each rule is one unit-test target. "Open SOS" = status `SENT`, `ACCEPTED` or `HA
 
 | ID | Rule |
 |---|---|
-| BR-19 | Time window `w = floor(unixSeconds / 60)`. QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 characters. The QR content is `wargakita:join:<communityId>:<token>`. No table stores tokens. (Manual 8-digit code: **[PHASE 2]**.) |
+| BR-19 | Time window `w = floor(unixSeconds / 60)`. QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 characters. The QR content is `sigap:join:<communityId>:<token>`. No table stores tokens. (Manual 8-digit code: **[PHASE 2]**.) |
 | BR-20 | A token is valid only for window `w` or `w - 1` of the community named in the request, compared with `timingSafeEqual`. An unknown community id and a wrong or older token give the same 400 'Invalid or expired code'. The same helper validates both the preview (F-MEMBERSHIPS-2) and the join request (F-MEMBERSHIPS-3). |
 | BR-21 | **[DIBUANG di Lite]** Join ticket. |
 | BR-22 | **[PHASE 2]** Limit of 3 PENDING requests. |
@@ -533,9 +533,9 @@ Emails (plain text + minimal HTML, no images, built by pure functions with the s
 
 | Email | Subject | Content |
 |---|---|---|
-| OTP verification | Kode verifikasi WargaKita | the code, valid for {OTP_TTL_MINUTES} minutes, warning not to share it |
-| OTP reset | Kode reset password WargaKita | same |
-| `SOS_NEW` | [SOS {typeLabel}] {label} | "{userName} ({houseBlock}) mengirim SOS {typeLabel} di {label}. Buka WargaKita untuk menanggapi: {FRONTEND_URL}". No GPS, no note, no phone number (BR-68) |
+| OTP verification | Kode verifikasi SIGAP | the code, valid for {OTP_TTL_MINUTES} minutes, warning not to share it |
+| OTP reset | Kode reset password SIGAP | same |
+| `SOS_NEW` | [SOS {typeLabel}] {label} | "{userName} ({houseBlock}) mengirim SOS {typeLabel} di {label}. Buka SIGAP untuk menanggapi: {FRONTEND_URL}". No GPS, no note, no phone number (BR-68) |
 | `JOIN_APPROVED` (optional) | Permintaan bergabung disetujui | same as the notification body |
 
 ### 5.10 Other rules
@@ -678,7 +678,7 @@ Closed states (RESOLVED, CANCELLED, FALSE_ALARM) set `closedAt` and are final. A
 
 ### 8.7 Email
 - `MailService` implements the `OtpSender` port and calls the Resend HTTPS API with `fetch` (no SDK, no SMTP: Railway Hobby blocks outbound SMTP ports). Methods: `sendOtp()`, `sendSosAlert()`, optional `sendJoinApproved()`.
-- `MAIL_PROVIDER` = `resend` | `console`; defaults to `console` when `NODE_ENV !== 'production'`; `console` is refused at boot in production. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (e.g. `"WargaKita <no-reply@averil.tech>"`, verified domain) are required when the provider is `resend`.
+- `MAIL_PROVIDER` = `resend` | `console`; defaults to `console` when `NODE_ENV !== 'production'`; `console` is refused at boot in production. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (e.g. `"SIGAP <no-reply@averil.tech>"`, verified domain) are required when the provider is `resend`.
 - The console adapter never prints OTP codes. Non-OTP mail is fire-and-log (BR-68).
 - Texts and subjects: 5.9.1. The SOS email never contains GPS, the note or a phone number.
 
@@ -713,7 +713,7 @@ Closed states (RESOLVED, CANCELLED, FALSE_ALARM) set `closedAt` and are final. A
 | `OTP_RESEND_COOLDOWN_SECONDS` | resend cooldown (60) | 8.1 |
 | `MAIL_PROVIDER` | `resend` \| `console` (console refused in production) | 8.7 |
 | `RESEND_API_KEY` | Resend API key, required when provider is `resend` | 8.7 |
-| `RESEND_FROM_EMAIL` | sender, e.g. `"WargaKita <no-reply@averil.tech>"`, required when provider is `resend` | 8.7 |
+| `RESEND_FROM_EMAIL` | sender, e.g. `"SIGAP <no-reply@averil.tech>"`, required when provider is `resend` | 8.7 |
 | `THROTTLE_TTL` | throttle window in seconds (60) | BR-80 |
 | `THROTTLE_LIMIT` | global limit per IP per window (100) | BR-80 |
 | `AUTH_THROTTLE_LIMIT` | limit per IP per window for the six pre-login auth endpoints (10) | BR-80 |
