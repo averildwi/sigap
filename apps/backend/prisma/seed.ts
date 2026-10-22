@@ -15,9 +15,9 @@ const DATABASE_URL = requireEnv('DATABASE_URL');
 const SEED_ADMIN_EMAIL = requireEnv('SEED_ADMIN_EMAIL').toLowerCase();
 const SEED_DEMO_PASSWORD = requireEnv('SEED_DEMO_PASSWORD');
 
-const WARGA1_EMAIL = 'warga1@wargakita.test';
-const WARGA2_EMAIL = 'warga2@wargakita.test';
-const GUEST_EMAIL = 'tamu@wargakita.test';
+const WARGA1_EMAIL = 'warga1@sigap.test';
+const WARGA2_EMAIL = 'warga2@sigap.test';
+const GUEST_EMAIL = 'tamu@sigap.test';
 
 const COMMUNITY = {
   rt: 1,

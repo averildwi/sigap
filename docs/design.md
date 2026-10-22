@@ -1,5 +1,5 @@
-# DESIGN.md — WargaKita Lite UI/UX System Specification
-**Product:** WargaKita Lite (Multi-tenant RT/RW Community Platform)  
+# DESIGN.md — SIGAP UI/UX System Specification
+**Product:** SIGAP (Multi-tenant RT/RW Community Platform)  
 **Status:** Approved for Implementation (Competition Build 1–2 Days)  
 **Target Audience:** Indonesian Residents (*Warga*) and Neighborhood Administrators (*Pengurus RT/RW*)  
 **Primary Language:** Bahasa Indonesia  
@@ -13,7 +13,7 @@
 1. **Civic Trust & Reassurance (*Ketenteraman Warga*):** Mengedepankan rasa aman, transparan, dan inklusif. Antarmuka dirancang untuk warga dengan rentang literasi digital yang beragam.
 2. **Keterbacaan & Kecepatan Respons:** Informasi genting (SOS) dan pengumuman resmi harus langsung terbaca dalam 2 detik pertama tanpa gangguan dekorasi visual berlebihan.
 3. **Pemisahan Jelas Antara Aksi Biasa & Darurat:** Fitur harian menggunakan palet emerald/hijau yang menenangkan, sementara aksi SOS menggunakan warna merah crimson kontras tinggi yang terisolasi secara visual.
-4. **Fidelitas Ketat Terhadap PRD Lite:** Tidak ada fitur yang diada-adakan di luar scope (tidak ada upload foto/berkas, tidak ada family card/KK, tidak ada payment/chat langsung).
+4. **Fidelitas Ketat Terhadap [PRD](PRD.md) Lite:** Tidak ada fitur yang diada-adakan di luar scope (tidak ada upload foto/berkas, tidak ada family card/KK, tidak ada payment/chat langsung).
 
 ---
 
@@ -72,7 +72,7 @@
 
 ### Desktop Layout Structure
 - **Persistent Left Sidebar (Width: 260px):**
-  - **Brand Header:** Logo resmi WargaKita Lite + indikator badge 'LITE'.
+  - **Brand Header:** Logo resmi SIGAP + indikator badge 'LITE'.
   - **Community Switcher Card:** Dropdown interaktif menampilkan komunitas terpilih (`RT 001 / RW 006`), wilayah (`Kel. Suka Maju`), dan badge peran user (`Pengurus (ADMIN)` atau `Warga (WARGA)`).
   - **Menu List:**
     1. *Beranda Komunitas* (Dashboard ringkas RT/RW)
@@ -110,13 +110,13 @@
 - **Dynamic QR Window (F-MEMBERSHIPS-1):**
   - Menampilkan QR dinamis dengan rotasi token per 60 detik (`HMAC-SHA256`).
   - Timer visual countdown (*"Berlaku 42 detik lagi"*).
-  - Fallback manual string penuh: `wargakita:join:<communityId>:<token>` lengkap dengan tombol "Salin Teks QR".
+  - Fallback manual string penuh: `sigap:join:<communityId>:<token>` lengkap dengan tombol "Salin Teks QR".
 - **Antrean Pendaftaran (F-MEMBERSHIPS-4, 5, 6):**
   - Kartu pemohon menampilkan nama, email, blok rumah, dan waktu submit.
   - Aksi cepat satu klik: *Setujui (Warga)* (hijau) & *Tolak* (merah).
 - **Direktori Warga & Pengelolaan Peran (F-MEMBERSHIPS-10, 11):**
   - Tabel responsif dengan pencarian nama & filter blok rumah.
-  - Validasi aturan PRD: Pengurus terakhir tidak dapat dikeluarkan atau demote dirinya sendiri.
+  - Validasi aturan [PRD](PRD.md): Pengurus terakhir tidak dapat dikeluarkan atau demote dirinya sendiri.
 
 ### C. Laporan Warga Komunitas (F-REPORTS-1 .. 7)
 - **Tampilan Split-View (Daftar & Detail Respons):**

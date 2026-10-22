@@ -8,10 +8,10 @@ const schema = baseEnvSchema.concat(projectEnvSchema);
 const valid = {
   DATABASE_URL: 'postgresql://localhost/db',
   JWT_SECRET: 'x'.repeat(32),
-  APP_URL: 'https://wargakita.example.com',
+  APP_URL: 'https://sigap.example.com',
   JOIN_TOKEN_SECRET: 'y'.repeat(32),
   RESEND_API_KEY: 're_123',
-  MAIL_FROM: 'WargaKita <no-reply@example.com>',
+  MAIL_FROM: 'SIGAP <no-reply@example.com>',
 };
 
 describe('env schema', () => {

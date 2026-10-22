@@ -1,4 +1,4 @@
-# IMPLEMENTATION_PLAN: WargaKita Lite backend (Turborepo monorepo)
+# IMPLEMENTATION_PLAN: SIGAP backend (Turborepo monorepo)
 
 Source: `docs/PRD.md` rev 5.2, `docs/DATA_MODEL.md`, `docs/API_SPEC.md`, `docs/SPEC_AUDIT.md` (READY), and the skills (git-workflow, nest-architecture, nest-prisma, nest-auth-and-security + references, nest-validation-and-config, nest-response-and-errors, nest-testing). No code is written by this plan.
 
@@ -28,14 +28,14 @@ Conventions for this plan:
   - Add/remove dependencies with the workspace flag from the root: `npm install <pkg> -w apps/backend`; or `cd apps/backend` first (npm resolves the workspace root automatically). The dependency must land in `apps/backend/package.json`, never the root `package.json` (root only carries tooling such as `turbo`).
   - Run workspace scripts from root (`npx turbo run <task> --filter=backend` or `npm run <task> -w apps/backend`) or from inside the app folder.
   - When `apps/backend/package.json` changes, `npm run build` inside `apps/backend` is also part of the gate (git-workflow rule 5).
-- The PRD/API_SPEC reference `src/...`: read that as `apps/backend/src/...`. Docs keep living in `docs/` at the root.
+- The [PRD](PRD.md)/API_SPEC reference `src/...`: read that as `apps/backend/src/...`. Docs keep living in `docs/` at the root.
 - Deploy later: Railway Root Directory = `apps/backend`; Vercel Root Directory = `apps/web` (frontend teammate's concern).
 - One commit = one complete change (code + DTOs + tests + migration). **Never** `git add .`, no push/merge/rebase, no destructive Prisma command (nest-prisma rule 15) anywhere in this plan.
 - Verification before every commit (git-workflow rules 5-6), from `apps/backend`:
   - `npx eslint "{src,test}/**/*.ts"` (whole backend, no `--fix`)
   - `npm run test`
   - `npm run build` whenever `prisma/schema.prisma`, `tsconfig*.json`, `nest-cli.json`, `package.json` or `main.ts` changed, plus `npx prisma generate` when the schema changed
-  - e2e on the real DB: `node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json --runInBand` (test-recipes note, SPEC_AUDIT minor #3)
+  - e2e on the real DB: `node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json --runInBand` (test-recipes note, [SPEC_AUDIT](SPEC_AUDIT.md) minor #3)
 - Every step below states: branch, commits (one commit per row), files, F-IDs/BRs, tests (exception paths first, then happy path, then "the write did not happen"), and open risks.
 
 ---
@@ -47,7 +47,7 @@ Conventions for this plan:
 | Commit | Files |
 |---|---|
 | `chore(repo): bootstrap the turborepo root` | root `package.json` (`workspaces: ["apps/*", "packages/*"]`), `turbo.json` (tasks `build`, `lint`, `test`, `dev` defined up front — no later edit needed), `.gitignore` (`.env*`, `.turbo/`, `node_modules/`, `dist/`, `.next/`, `apps/backend/generated/`), minimal root `README.md` |
-| `docs: add the revision 5.2 spec docs` | `docs/` (PRD, DATA_MODEL, API_SPEC, SPEC_AUDIT, GAPS, IMPLEMENTATION_PLAN) |
+| `docs: add the revision 5.2 spec docs` | `docs/` ([PRD](PRD.md), [DATA_MODEL](DATA_MODEL.md), [API_SPEC](API_SPEC.md), [SPEC_AUDIT](SPEC_AUDIT.md), [GAPS](GAPS.md), IMPLEMENTATION_PLAN) |
 
 - Delivers: the workspace contract every later tool expects. F-IDs: none.
 - **Rule before Step 1:** `package.json` must already declare the workspaces when the first `npm install` runs, or every app gets its own nested `node_modules`.
@@ -117,12 +117,12 @@ Content of the appended section (`repo:AGENTS.md`):
 
 | Commit | Files | Delivers |
 |---|---|---|
-| `feat(config): add the env schema and throttle tiers` | `src/config/env.schema.ts`, `.env.example`, `src/config/throttle.config.ts`, `src/config/throttle.config.spec.ts`, `src/config/env.schema.spec.ts` | API_SPEC 11 (20 vars, Joi per table), BR-80 tiers (`default`/`auth`/`sendCode`/`join`/`sos`, `skipIf` reading `@ThrottleTier` metadata), L-5 pin test (skill defaults 100/5/3/10/5, `ttl = THROTTLE_TTL * 1000`); env boot-fail tests from test-recipes (`JWT_SECRET`, `RESEND_API_KEY` required, `OTP_SENDER=console` refuses production) |
+| `feat(config): add the env schema and throttle tiers` | `src/config/env.schema.ts`, `.env.example`, `src/config/throttle.config.ts`, `src/config/throttle.config.spec.ts`, `src/config/env.schema.spec.ts` | [API_SPEC](API_SPEC.md) 11 (20 vars, Joi per table), BR-80 tiers (`default`/`auth`/`sendCode`/`join`/`sos`, `skipIf` reading `@ThrottleTier` metadata), L-5 pin test (skill defaults 100/5/3/10/5, `ttl = THROTTLE_TTL * 1000`); env boot-fail tests from test-recipes (`JWT_SECRET`, `RESEND_API_KEY` required, `OTP_SENDER=console` refuses production) |
 | `feat(health): wire main and add the health check` | `src/main.ts`, `src/app.module.ts`, `src/health/health.module.ts`, `health.controller.ts`, `health.service.ts`, `health.service.spec.ts` | `main.ts` order of nest-architecture rule 10 (`trust proxy`, `api` prefix, CORS, pipes, interceptors, filters, Swagger), `ThrottlerModule.forRootAsync` with the five tiers, `APP_GUARD` ThrottlerGuard; F-HEALTH-1 / BR-84 |
 
 - Tests: health — DB error -> `ServiceUnavailableException` (first), happy path `SELECT 1` -> 200, no secrets in the response.
 - Verify: gate + build (`main.ts`, `package.json` touched).
-- Risks: none. `.env.example` includes every var of API_SPEC 11 incl. `APP_URL`; local `.env` (never committed) sets `OTP_SENDER=console` (SPEC_AUDIT minor #1 is then a non-issue locally).
+- Risks: none. `.env.example` includes every var of [API_SPEC](API_SPEC.md) 11 incl. `APP_URL`; local `.env` (never committed) sets `OTP_SENDER=console` ([SPEC_AUDIT](SPEC_AUDIT.md) minor #1 is then a non-issue locally).
 
 ## Step 3 — Prisma schema, migration, seed
 
@@ -130,7 +130,7 @@ Content of the appended section (`repo:AGENTS.md`):
 
 | Commit | Files | Delivers |
 |---|---|---|
-| `feat(prisma): add the initial schema, migration and demo seed` | `prisma/schema.prisma` (8 models exactly as DATA_MODEL), `prisma/migrations/<ts>_init/migration.sql` (from `npx prisma migrate dev --name init`), `prisma/seed.ts` | DATA_MODEL whole schema incl. `GlobalRole`/`isActive`/`tokenVersion` (R-33); seed per PRD 8.14 (`SEED_ADMIN_EMAIL`, `SEED_DEMO_PASSWORD` required, idempotent, `HashingService` imported) |
+| `feat(prisma): add the initial schema, migration and demo seed` | `prisma/schema.prisma` (8 models exactly as [DATA_MODEL](DATA_MODEL.md)), `prisma/migrations/<ts>_init/migration.sql` (from `npx prisma migrate dev --name init`), `prisma/seed.ts` | [DATA_MODEL](DATA_MODEL.md) whole schema incl. `GlobalRole`/`isActive`/`tokenVersion` (R-33); seed per [PRD](PRD.md) 8.14 (`SEED_ADMIN_EMAIL`, `SEED_DEMO_PASSWORD` required, idempotent, `HashingService` imported) |
 
 - Tests: none by rule (seed is verified by running it); typecheck via build.
 - Verify: `npx prisma generate` + gate + build.
@@ -242,9 +242,9 @@ Content of the appended section (`repo:AGENTS.md`):
 
 | Commit | Files | Delivers |
 |---|---|---|
-| `test(e2e): add the demo flow and the cross-tenant checks` | `test/wargakita.e2e-spec.ts` | the API_SPEC 14 e2e flow end-to-end incl. `handle` -> `resolve` and the SC-4 isolation check (admin A -> 403 on B), + E-40 |
+| `test(e2e): add the demo flow and the cross-tenant checks` | `test/sigap.e2e-spec.ts` | the [API_SPEC](API_SPEC.md) 14 e2e flow end-to-end incl. `handle` -> `resolve` and the SC-4 isolation check (admin A -> 403 on B), + E-40 |
 | `docs(readme): document setup, env vars and deployment` | `apps/backend/README.md`, root `README.md`, `.env.example` final review | 20 env vars documented, Railway root directory note, seed instructions, venue `.env` throttle tuning (Q2) |
-| (no third commit) whole-workspace verification | — | at root: `npx turbo run lint test build --filter=backend` green; endpoint count 51 REST + 1 WS re-counted against API_SPEC 17 |
+| (no third commit) whole-workspace verification | — | at root: `npx turbo run lint test build --filter=backend` green; endpoint count 51 REST + 1 WS re-counted against [API_SPEC](API_SPEC.md) 17 |
 
 - Risks: none planned. Any `migrate reset`/data-loss command stays out; if ever needed, it needs your explicit approval in the conversation (nest-prisma rule 15).
 
@@ -255,12 +255,12 @@ Content of the appended section (`repo:AGENTS.md`):
 | # | Decision |
 |---|---|
 | 1 | Turborepo, npm, `apps/backend` + `apps/frontend`; root bootstrapped by hand (Step 0), app scaffolds generated; no shared `packages/` code (frontend never imports backend internals). |
-| 2 | ID type uuid, PostgreSQL (PRD 0). |
+| 2 | ID type uuid, PostgreSQL ([PRD](PRD.md) 0). |
 | 3 | Throttle tiers via `ThrottleTier` + `skipIf` (L-5); defaults 100/5/3/10/5, venue raises them in `.env` only (Q2). |
 | 4 | Mail: skill `OTP_SENDER` port + `SOS_MAILER` port; `OTP_SENDER=resend` default; local `console` (R-35). |
 | 5 | Skills installed once at repo root with `--agent both`; backend agents read `.claude/skills`. |
 | 6 | The last admin cannot leave; no community deletion (G-L14) — no extra endpoints planned. |
-| 7 | `openOnly` wins over `status` on the SOS admin list (audit minor #2), implemented in Step 10 with the one-line API_SPEC doc fix. |
+| 7 | `openOnly` wins over `status` on the SOS admin list (audit minor #2), implemented in Step 10 with the one-line [API_SPEC](API_SPEC.md) doc fix. |
 
 ## Checklist
 

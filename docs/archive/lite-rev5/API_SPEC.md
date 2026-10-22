@@ -1,6 +1,6 @@
-# API_SPEC: WargaKita Lite
+# API_SPEC: SIGAP
 
-Source: `docs/PRD.md` rev 5 (Lite) and `docs/DATA_MODEL.md`. Full v1 spec archived in `docs/archive/full-v1/API_SPEC.md`. Items marked **[PHASE 2]** / **[DIBUANG di Lite]** / **[STRETCH]** in the PRD have no endpoint here (see section 10, "Not in Lite").
+Source: `docs/PRD.md` rev 5 (Lite) and `docs/DATA_MODEL.md`. Full v1 spec archived in `docs/archive/full-v1/API_SPEC.md`. Items marked **[PHASE 2]** / **[DIBUANG di Lite]** / **[STRETCH]** in the [PRD](PRD.md) have no endpoint here (see section 10, "Not in Lite").
 
 ## 0. Conventions (pointers only)
 
@@ -11,7 +11,7 @@ Source: `docs/PRD.md` rev 5 (Lite) and `docs/DATA_MODEL.md`. Full v1 spec archiv
 | Auth endpoints, JWT, OTP, throttle, `:id` pipes, no account leaks | `nest-auth-and-security` (rules 10, 12, 14, 21; Lite deviations L-1..L-3) |
 | DTO rules, `PaginationDto`, `ToBoolean`, env schema | `nest-validation-and-config` |
 | Prisma usage (select, transactions, no N+1) | `nest-prisma` |
-| Known deviations L-1..L-4 | PRD 8.13 |
+| Known deviations L-1..L-4 | [PRD](PRD.md) 8.13 |
 
 All paths are under `/api`. All ids are uuid -> every `:xxxId` uses `ParseUUIDPipe`. Every list query DTO extends `PaginationDto` (`page`, `limit`).
 
@@ -160,7 +160,7 @@ Join token (BR-19, BR-20), pure helper `src/memberships/join-token.ts`, unit-tes
 - `w = floor(nowSeconds / 60)`.
 - `token(communityId, w) = base64url(HMAC-SHA256(JOIN_TOKEN_SECRET, "qr:" + communityId + ":" + w)).slice(0, 22)`.
 - `isValid(communityId, token, now)` = matches `w` or `w - 1`, compared with `timingSafeEqual` on equal-length buffers (length mismatch -> false).
-- QR content: `wargakita:join:<communityId>:<token>` (not a URL). The frontend shows the token under the QR as a typed fallback.
+- QR content: `sigap:join:<communityId>:<token>` (not a URL). The frontend shows the token under the QR as a typed fallback.
 
 | Method | Path | Summary | Guard | Throttle | Success | Feature / BR |
 |---|---|---|---|---|---|---|
@@ -211,7 +211,7 @@ Join token (BR-19, BR-20), pure helper `src/memberships/join-token.ts`, unit-tes
 - **Request** paths; body `ChangeRoleDto { role: MembershipRole @IsEnum(MembershipRole) }`, example `{ "role": "ADMIN" }`. This is the action of the endpoint, guarded by `assertAdmin`.
 - **Response** `MessageResponse(MembershipView & { user: UserRef }, 'Role updated')`.
 - **Errors**: `403` (member / admin); `404 | Member not found`; `400 | Member is not active`; `400 | A community needs at least one admin | demoting the last ACTIVE ADMIN (BR-27)`.
-- **Rules**: BR-27, BR-29. **Transaction: yes**: read target; if demoting an ADMIN, `membership.count({ communityId, status: ACTIVE, role: ADMIN })` must be > 1; `updateMany({ id, communityId, status: ACTIVE }, { role })` (count 0 -> 400). Same role -> returns unchanged (idempotent). Two admins demoting each other at once can both pass the count (GAPS G-L2).
+- **Rules**: BR-27, BR-29. **Transaction: yes**: read target; if demoting an ADMIN, `membership.count({ communityId, status: ACTIVE, role: ADMIN })` must be > 1; `updateMany({ id, communityId, status: ACTIVE }, { role })` (count 0 -> 400). Same role -> returns unchanged (idempotent). Two admins demoting each other at once can both pass the count ([GAPS](GAPS.md) G-L2).
 
 ### POST /communities/:communityId/memberships/:membershipId/remove
 - **Request** paths; no body.
@@ -457,7 +457,7 @@ Endpoints / mechanisms (see archive): change-password, logout-all, account delet
 
 ## 11. Environment variables
 
-Same list as PRD 8.12. Joi in `src/config/env.schema.ts` (project) or nest-common base, and all in `.env.example`.
+Same list as [PRD](PRD.md) 8.12. Joi in `src/config/env.schema.ts` (project) or nest-common base, and all in `.env.example`.
 
 | Variable | Joi | Read by |
 |---|---|---|
@@ -587,11 +587,11 @@ None.
 | # | Check | Result |
 |---|---|---|
 | 1 | No endpoint, BR, feature, env var or model from the "Dibuang" list is presented as Lite (outside Phase 2 / Not in Lite / archive) | **pass**: grep for `X-Internal-Key`, `socket-ticket`, `SUPER_ADMIN`, `tokenVersion`, `ownerId`, `joinCode`, `ipHash`, `AuditLog`, `SosEvent`, `Cloudinary`, `RESEND` only finds Phase-2 / Not-in-Lite / deviation mentions. |
-| 2 | Every endpoint has a PRD feature and vice versa | **pass**: 48 REST endpoints + 1 WS, all mapped in section 13; every Lite ✓ feature in PRD 11 has an endpoint (F-NOTIFICATIONS-6 is a side effect). |
-| 3 | Every field used here exists in DATA_MODEL and vice versa | **pass**: response shapes use only schema columns (`resolutionNote`, `handlingAt`, `decidedAt` included); unused-by-API columns: `SosAlert.escalatedAt` (Stretch, N-10), `Report.respondedById` (exposed as `respondedBy`), `OtpCode.*` (auth internals). |
-| 4 | Every BR referenced here and in DATA_MODEL exists in PRD with consistent content | **pass**: referenced BR-1..3, 9, 11..16, 19, 20, 23..25, 27..33, 35..39, 48..55, 57..60, 62..66, 68, 69, 77, 80, 81 are active in PRD rev 5; BR-63 is Stretch in both. |
+| 2 | Every endpoint has a [PRD](PRD.md) feature and vice versa | **pass**: 48 REST endpoints + 1 WS, all mapped in section 13; every Lite ✓ feature in [PRD](PRD.md) 11 has an endpoint (F-NOTIFICATIONS-6 is a side effect). |
+| 3 | Every field used here exists in [DATA_MODEL](DATA_MODEL.md) and vice versa | **pass**: response shapes use only schema columns (`resolutionNote`, `handlingAt`, `decidedAt` included); unused-by-API columns: `SosAlert.escalatedAt` (Stretch, N-10), `Report.respondedById` (exposed as `respondedBy`), `OtpCode.*` (auth internals). |
+| 4 | Every BR referenced here and in [DATA_MODEL](DATA_MODEL.md) exists in [PRD](PRD.md) with consistent content | **pass**: referenced BR-1..3, 9, 11..16, 19, 20, 23..25, 27..33, 35..39, 48..55, 57..60, 62..66, 68, 69, 77, 80, 81 are active in [PRD](PRD.md) rev 5; BR-63 is Stretch in both. |
 | 5 | No body DTO accepts `role`, `status`, `communityId` (outside path), `handlerId`, `reporterId` | **pass with two documented exceptions**: `POST /memberships` takes `communityId` (it is the scanned QR target, BR-20); `PATCH .../role` takes `role` (the action itself, admin-only, BR-29). No DTO takes `status`, `handlerId`, `reporterId`, `respondedById`, `isHighlight` outside announcements. |
-| 6 | Env list here = PRD 8.12 | **pass**: same 16 variables + `SEED_DEMO_PASSWORD` seed-only. |
-| 7 | No dead references | **pass**: sections renumbered (10 = Not in Lite, 11 env); PRD IDs kept with markers; GAPS in `docs/GAPS.md`. |
+| 6 | Env list here = [PRD](PRD.md) 8.12 | **pass**: same 16 variables + `SEED_DEMO_PASSWORD` seed-only. |
+| 7 | No dead references | **pass**: sections renumbered (10 = Not in Lite, 11 env); [PRD](PRD.md) IDs kept with markers; [GAPS](GAPS.md) in `docs/GAPS.md`. |
 
 Endpoint count: full v1 63 REST + WS -> Lite **48 REST + WS** (+ Stretch job).

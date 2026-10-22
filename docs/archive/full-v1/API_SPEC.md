@@ -1,6 +1,6 @@
-# API_SPEC: WargaKita v1
+# API_SPEC: SIGAP v1
 
-Source: `docs/PRD.md` rev 4 (v1 features only, ✓ in PRD section 11) and `docs/DATA_MODEL.md`. **[PHASE 2]** features have no endpoints here.
+Source: `docs/PRD.md` rev 4 (v1 features only, ✓ in [PRD](PRD.md) section 11) and `docs/DATA_MODEL.md`. **[PHASE 2]** features have no endpoints here.
 
 ## 0. Conventions (pointers only)
 
@@ -11,7 +11,7 @@ Source: `docs/PRD.md` rev 4 (v1 features only, ✓ in PRD section 11) and `docs/
 | Auth endpoints, JWT, OTP, throttle table, `:id` pipes, no account leaks | `nest-auth-and-security` (rules 10, 12, 14, 21) |
 | DTO rules, `PaginationDto`, `ToBoolean`, env schema | `nest-validation-and-config` |
 | Prisma usage (select, transactions, no N+1) | `nest-prisma` |
-| Known deviations D-1..D-5 (BFF gate, client IP, socket ticket, extra throttle keys) | PRD 8.13 |
+| Known deviations D-1..D-5 (BFF gate, client IP, socket ticket, extra throttle keys) | [PRD](PRD.md) 8.13 |
 
 All paths are under `/api`. All ids are uuid -> every `:xxxId` uses `ParseUUIDPipe`. Every list query DTO extends `PaginationDto` (`page`, `limit`).
 
@@ -55,11 +55,11 @@ Never returned anywhere: `passwordHash`, `codeHash`, `tokenVersion`, `ipHash`, `
 | # | Conflict | Resolution |
 |---|---|---|
 | C-1 | Skill rule 5 wants `globalRole` / `GlobalRole` when two role layers exist, but nest-common's `RolesGuard` reads `AuthUser.role` and rule 24 only allows editing `RoleName`, `UserId`, `JwtPayload` | `RoleName = GlobalRole` in `auth-user.ts`; `JwtStrategy.validate()` maps `User.globalRole` -> `AuthUser.role`. `@Roles('USER')` / `@Roles('SUPER_ADMIN')`. No guard change. |
-| C-2 | Skill rule 21: `GET /auth/me` returns `id, email, role, emailVerifiedAt, createdAt` | Returns those plus `name`, `phone` (PRD F-AUTH-5); the role field is named `globalRole` to avoid confusion with the membership role. **Needs your OK** (Q-A). |
-| C-3 | Skill `RegisterDto` is `{ email, password }` | Extended with `name` and `acceptPrivacyPolicy` (PRD BR-4). Same decorators for email/password. |
+| C-2 | Skill rule 21: `GET /auth/me` returns `id, email, role, emailVerifiedAt, createdAt` | Returns those plus `name`, `phone` ([PRD](PRD.md) F-AUTH-5); the role field is named `globalRole` to avoid confusion with the membership role. **Needs your OK** (Q-A). |
+| C-3 | Skill `RegisterDto` is `{ email, password }` | Extended with `name` and `acceptPrivacyPolicy` ([PRD](PRD.md) BR-4). Same decorators for email/password. |
 | C-4 | Skill rule 21: current user is `/auth/me`, not `/users/me`; profile edit and account deletion are not in the skill table | `PATCH /auth/me` and `POST /auth/me/delete`, implemented in `src/users/` (`@Controller('auth/me')`). |
 | C-5 | Skill rule 7: built-in exceptions only; there is no `TooManyRequestsException` | BR-56 uses `new HttpException('Too many SOS alerts', HttpStatus.TOO_MANY_REQUESTS)` (built-in base class, no custom class). |
-| C-6 | Skill rule 16 / rule 10 / websocket recipe vs. the BFF-gate design | Documented deviations D-1..D-5 (PRD 8.13); not repeated as violations below. |
+| C-6 | Skill rule 16 / rule 10 / websocket recipe vs. the BFF-gate design | Documented deviations D-1..D-5 ([PRD](PRD.md) 8.13); not repeated as violations below. |
 | C-7 | Prompt says every `:id` pipe "uuid / int / cuid"; skill rule 14 | All `ParseUUIDPipe`. |
 
 ## 1. Module `auth` (`src/auth/`)
@@ -242,7 +242,7 @@ Join tokens and codes (BR-19), computed in `src/memberships/join-token.ts` (pure
 - QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 chars.
 - Manual code = (first 6 bytes of HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"code:" + communityId + ":" + w`) as an integer) mod 10^8, zero-padded to 8 digits.
 - Valid for `w` and `w - 1`; compared with `timingSafeEqual` on equal-length buffers.
-- The QR **content** is the string `wargakita:join:<communityId>:<token>`, read by the in-app scanner (never a URL, so the token does not land in browser history or Vercel logs).
+- The QR **content** is the string `sigap:join:<communityId>:<token>`, read by the in-app scanner (never a URL, so the token does not land in browser history or Vercel logs).
 - Join ticket = JWT signed with `JOIN_TICKET_SECRET` (separate `JwtService.signAsync(..., { secret })` call), payload `{ purpose: 'join', sub, communityId, w, scannedAt }`, expiry 10 minutes (BR-21).
 
 | Method | Path | Summary | Guard | Roles | Throttle | Success | Feature / BR |
@@ -408,7 +408,7 @@ Route order: `memberships/me` before any `:membershipId` route.
 - **Request** paths (`ParseUUIDPipe`); body `UpdateAnnouncementDto extends PartialType(CreateAnnouncementDto)` (`isHighlight: false` removes the highlight).
 - **Response** `MessageResponse(AnnouncementView, 'Announcement updated')`.
 - **Errors**: `403` (member / admin); `404 | Announcement not found | missing or other community (BR-33)`; `400 | validation`.
-- **Rules**: BR-35, BR-36. Transaction: yes when `isHighlight` changes (clear others, then update). No notification (A-13). Any ADMIN of the community may edit, not only the author (PRD F-ANNOUNCEMENTS-2).
+- **Rules**: BR-35, BR-36. Transaction: yes when `isHighlight` changes (clear others, then update). No notification (A-13). Any ADMIN of the community may edit, not only the author ([PRD](PRD.md) F-ANNOUNCEMENTS-2).
 
 ### DELETE /communities/:communityId/announcements/:announcementId
 - **Response** `MessageResponse(null, 'Announcement deleted')`.
@@ -565,7 +565,7 @@ Route order: `sos-alerts/me` before `sos-alerts/:sosAlertId`.
 - **Request** paths, no body.
 - **Response** `MessageResponse(SosView, 'SOS cancelled')`.
 - **Errors**: `403 | You are not a member of this community`; `404 | SOS alert not found | missing, other community, or not the caller's SOS`; `400 | Invalid SOS state | already closed`.
-- **Rules**: BR-59 (sender only, from SENT / ACCEPTED / HANDLING), BR-61, BR-63 (escalation stops). Transaction: yes; `updateMany({ id, communityId, senderId: me, status: { in: open } })`. No notification row (sender is the actor); realtime `sos:updated` to the handler + admins. Not audited (sender action, PRD BR-71 list). Description: "Only the sender (service check)".
+- **Rules**: BR-59 (sender only, from SENT / ACCEPTED / HANDLING), BR-61, BR-63 (escalation stops). Transaction: yes; `updateMany({ id, communityId, senderId: me, status: { in: open } })`. No notification row (sender is the actor); realtime `sos:updated` to the handler + admins. Not audited (sender action, [PRD](PRD.md) BR-71 list). Description: "Only the sender (service check)".
 
 ### SosEscalationJob (no endpoint)
 - Every 15 s (`@Interval`), batch of up to 50: `findMany({ status: SENT, nextEscalationAt: { lte: now }, escalationLevel: { lt: 3 } })`; per alert, claim with `updateMany({ id, status: SENT, escalationLevel: L }, { escalationLevel: L + 1, nextEscalationAt: L + 1 < 3 ? now + 120 s : null })`; only when count = 1: `notification.createMany(SOS_ESCALATED)` to current ACTIVE admins minus the sender, then realtime + email (BR-68). The loop over alerts is bounded (≤ 50) and each iteration is one claim + one `createMany`; email sending is fire-and-log. Restart-safe (BR-63, E-9).
@@ -644,7 +644,7 @@ Route order: `read-all` and `unread-count` before `:notificationId`.
 | key valid, `X-Client-IP` missing or not an IP (`net.isIP`) | `400 | Invalid client IP` | BR-79 |
 | key valid | `req.clientIp = X-Client-IP`, used by the `ip` throttler and `ipHash` | BR-79 |
 
-Swagger `/docs` is registered only when `NODE_ENV !== 'production'` (PRD A-28).
+Swagger `/docs` is registered only when `NODE_ENV !== 'production'` ([PRD](PRD.md) A-28).
 
 ## 11. Environment variables implied by this spec
 
@@ -843,18 +843,18 @@ Exception types per `nest-response-and-errors` rule 7. "no write" = assert the g
 | BR-81 | `clientIpFromXff` helper, gateway | picks entry `hops` from the right; forged left entries ignored; bad Origin disconnected |
 | BR-82 | `remove`, `demote`, `leave`, `deleteAccount` | `BadRequestException` when the target handles an open SOS; status update rolled back (tx throws) |
 
-e2e (required, PRD 8.2): route-guard meta-test (skill), tenant isolation (admin of A on every community route of B -> 403/404), WARGA on every admin route -> 403, PENDING member on every member route -> 403, BFF gate (no key -> 403, forged `X-Client-IP` without key -> 403).
+e2e (required, [PRD](PRD.md) 8.2): route-guard meta-test (skill), tenant isolation (admin of A on every community route of B -> 403/404), WARGA on every admin route -> 403, PENDING member on every member route -> 403, BFF gate (no key -> 403, forged `X-Client-IP` without key -> 403).
 
 ## 15. Gaps in PRD
 
 | # | Gap | Proposed handling (not implemented until you decide) |
 |---|---|---|
-| G-1 | Account deletion while the user has a PENDING community application: PRD BR-6 does not say what happens to it | Leave it PENDING; approve then fails with 400 'Applicant account no longer exists' (BR-16), super admin rejects it. Or auto-reject in BR-6. |
+| G-1 | Account deletion while the user has a PENDING community application: [PRD](PRD.md) BR-6 does not say what happens to it | Leave it PENDING; approve then fails with 400 'Applicant account no longer exists' (BR-16), super admin rejects it. Or auto-reject in BR-6. |
 | G-2 | No way to withdraw a PENDING join request or community application | Not specified; users wait for decision / 7-day expiry. Add `POST /memberships/:id/withdraw` later if wanted. |
 | G-3 | The **sender** of an open SOS may leave the community (BR-82 only blocks the handler) and then cannot cancel it (BR-31) | Spec allows it (description on `leave`). Alternative: also block leave for the sender. |
 | G-4 | Super admin is not notified of new community applications (no notification type) | Super admin polls the list. |
 | G-5 | Notification `title` / `body` texts (Indonesian) are not defined | Implementation writes them per type in one template map; review in the plan. |
-| G-6 | PRD BR-36 "clears others in the same transaction" still allows a P2002 race between two parallel highlights | Spec answers 409 to the loser (E-6). |
+| G-6 | [PRD](PRD.md) BR-36 "clears others in the same transaction" still allows a P2002 race between two parallel highlights | Spec answers 409 to the loser (E-6). |
 
 ## 16. Questions for you
 
@@ -872,7 +872,7 @@ e2e (required, PRD 8.2): route-guard meta-test (skill), tenant isolation (admin 
 | 2 | kebab-case plural under `/api`, nested, `POST :id/<verb>` 200, `/auth/me` | **pass** with one documented exception: `POST /communities/:communityId/transfer-ownership` and `/leave` are actions on the community (verb on the parent `:communityId`), `POST /join-tickets` and `/socket-tickets` create short-lived resources (201). Profile under `/auth/me` (C-4). |
 | 3 | Every list has pagination + declared filters; every `:id` has a pipe | **pass**: all list DTOs extend `PaginationDto`; all path ids `ParseUUIDPipe`; query booleans use `ToBoolean`. |
 | 4 | Throttles per skill rule 10, plus mail/code/login-like endpoints | **pass**: auth table values (5 / 3) on ip, extra email keys (D-4); join-tickets, memberships, sos-alerts, socket-tickets, report upload, account delete, transfer-ownership, and every mail-sending approve/reject have handler-level throttles; none at class level. |
-| 5 | Auth endpoints from the skill table, only what the PRD enables | **pass**: register, verify-otp, resend-otp, login, forgot/reset, me, change-password, logout-all. No refresh, no Google. |
+| 5 | Auth endpoints from the skill table, only what the [PRD](PRD.md) enables | **pass**: register, verify-otp, resend-otp, login, forgot/reset, me, change-password, logout-all. No refresh, no Google. |
 | 6 | No body accepts `role`, `isActive`, `tokenVersion` or privileged fields | **pass**: no DTO has `globalRole`, `role`, `isOwner`, `status`, `isActive`, `tokenVersion`, `communityId` (path only), `handlerId`, `reporterId`, `ownerId`. Status changes are separate verb endpoints. Transfer takes a `membershipId` and checks it server side. |
 | 7 | No endpoint reveals whether an account exists | **pass**: auth per skill (register 409 is the skill's documented exception); join-ticket errors identical for unknown community / code; community routes answer 403 for unknown and non-member alike; notifications 404 for others' ids. |
 

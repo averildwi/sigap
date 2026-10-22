@@ -1,4 +1,4 @@
-# PRD: WargaKita Lite, multi-tenant RT/RW community platform
+# PRD: SIGAP, multi-tenant RT/RW community platform
 
 Status: APPROVED, **rev 5.1 (Lite)**, for a web-developer competition build of 1-2 days. Source: `breakdown-fitur-lengkap-multi-tenant.md` + decisions below. Full v1 (rev 4) is archived in `docs/archive/full-v1/PRD.md`; Lite rev 5 in `docs/archive/lite-rev5/PRD.md`.
 Conventions (envelope, guards, DTOs, Prisma, tests, git) are owned by the skills in `.claude/skills`; this PRD only describes WHAT the product does. Where Lite knowingly departs from a skill, the departure is listed in 8.13 (L-1..L-4).
@@ -18,7 +18,7 @@ Deployment hardening, regions as free text, scope cut for 5 days. Details in `do
 | R-19 | No BFF gate, no client-IP header, no socket ticket. Throttle = standard per-IP `@nestjs/throttler`. Socket.IO uses the JWT in `handshake.auth.token` | 8.4, 8.6, 8.11, 8.13, BR-77..81 |
 | R-20 | No `tokenVersion`, no change-password, no logout-all, no account deletion, no privacy consent field | F-AUTH-6/7, F-USERS-3, BR-4..8, 8.13 L-1 |
 | R-21 | No uploads (report is JSON only), no audit log, no SOS history, no SOS hourly limit, no expiry job | BR-26, 48, 56, 61, 70, 71 |
-| R-22 | Race safety = conditional `updateMany` only | 8.2, DATA_MODEL N-4 |
+| R-22 | Race safety = conditional `updateMany` only | 8.2, [DATA_MODEL](DATA_MODEL.md) N-4 |
 | R-23 | Email: OTP (required) and `SOS_NEW` to recipient admins (fire-and-log); `JOIN_APPROVED` email optional. Transport changed to Resend in R-27 | F-NOTIFICATIONS-6, BR-68, 8.7 |
 | R-24 | Notifications simplified: list, unread count, read, read-all; 9 types | F-NOTIFICATIONS-1..3, BR-65, BR-66 |
 | R-25 | SOS escalation reduced to one level and moved to **[STRETCH]** | F-SOS-7, BR-63 |
@@ -33,7 +33,7 @@ Deployment hardening, regions as free text, scope cut for 5 days. Details in `do
 | R-29 | F-MEMBERSHIPS-2 back in Lite as "Preview a scanned QR" (`POST /memberships/preview`, read-only); join stays one step, no join ticket | 0.1, 2.2, 4.4, 11, BR-20, BR-80, E-11 |
 | R-30 | Manual fallback is the full `qrContent` string with a copy button, pasted into the join screen | F-MEMBERSHIPS-1, A-3 |
 | R-31 | Notification and email texts defined (5.9.1); SOS email carries no GPS, note or phone | 5.9.1, BR-68, 8.7 |
-| R-32 | GAPS G-L12, G-L13 added; G-L6, G-L9 updated | `docs/GAPS.md` |
+| R-32 | [GAPS](GAPS.md) G-L12, G-L13 added; G-L6, G-L9 updated | `docs/GAPS.md` |
 
 ## 0. Recorded decisions
 
@@ -242,7 +242,7 @@ Format: **ID** (breakdown ref) - goal. *Actor.* Acceptance criteria (Given / Whe
 ### 4.4 Module `memberships`
 
 **F-MEMBERSHIPS-1** (JON-01) Show the join QR. *C-ADMIN.*
-- Given I am an admin of the community, when I open the join screen, then I get the QR content (`wargakita:join:<communityId>:<token>`), the token and window on their own, and the seconds left in the current 60 s window.
+- Given I am an admin of the community, when I open the join screen, then I get the QR content (`sigap:join:<communityId>:<token>`), the token and window on their own, and the seconds left in the current 60 s window.
 - The manual fallback is the full `qrContent` string shown under the QR with a copy button; the join screen accepts that pasted string, the frontend parses the community id and token and calls the preview (F-MEMBERSHIPS-2). A token alone is not enough.
 - Given I am a WARGA or not a member, then I get 403.
 
@@ -437,7 +437,7 @@ Each rule is one unit-test target. "Open SOS" = status `SENT`, `ACCEPTED` or `HA
 
 | ID | Rule |
 |---|---|
-| BR-19 | Time window `w = floor(unixSeconds / 60)`. QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 characters. The QR content is `wargakita:join:<communityId>:<token>`. No table stores tokens. (Manual 8-digit code: **[PHASE 2]**.) |
+| BR-19 | Time window `w = floor(unixSeconds / 60)`. QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 characters. The QR content is `sigap:join:<communityId>:<token>`. No table stores tokens. (Manual 8-digit code: **[PHASE 2]**.) |
 | BR-20 | A token is valid only for window `w` or `w - 1` of the community named in the request, compared with `timingSafeEqual`. An unknown community id and a wrong or older token give the same 400 'Invalid or expired code'. The same helper validates both the preview (F-MEMBERSHIPS-2) and the join request (F-MEMBERSHIPS-3). |
 | BR-21 | **[DIBUANG di Lite]** Join ticket. |
 | BR-22 | **[PHASE 2]** Limit of 3 PENDING requests. |
@@ -533,9 +533,9 @@ Emails (plain text + minimal HTML, no images, built by pure functions with the s
 
 | Email | Subject | Content |
 |---|---|---|
-| OTP verification | Kode verifikasi WargaKita | the code, valid for {OTP_TTL_MINUTES} minutes, warning not to share it |
-| OTP reset | Kode reset password WargaKita | same |
-| `SOS_NEW` | [SOS {typeLabel}] {label} | "{userName} ({houseBlock}) mengirim SOS {typeLabel} di {label}. Buka WargaKita untuk menanggapi: {FRONTEND_URL}". No GPS, no note, no phone number (BR-68) |
+| OTP verification | Kode verifikasi SIGAP | the code, valid for {OTP_TTL_MINUTES} minutes, warning not to share it |
+| OTP reset | Kode reset password SIGAP | same |
+| `SOS_NEW` | [SOS {typeLabel}] {label} | "{userName} ({houseBlock}) mengirim SOS {typeLabel} di {label}. Buka SIGAP untuk menanggapi: {FRONTEND_URL}". No GPS, no note, no phone number (BR-68) |
 | `JOIN_APPROVED` (optional) | Permintaan bergabung disetujui | same as the notification body |
 
 ### 5.10 Other rules
@@ -551,7 +551,7 @@ Emails (plain text + minimal HTML, no images, built by pure functions with the s
 | BR-79 | **[PHASE 2]** Client IP header. |
 | BR-80 | Throttle per IP (`req.ip` with `trust proxy = TRUST_PROXY_HOPS`), window `THROTTLE_TTL` seconds (default 60): global `THROTTLE_LIMIT` (default 100); register, login, verify-otp, resend-otp, forgot-password, reset-password `AUTH_THROTTLE_LIMIT` (default 10); `POST /memberships/preview` 10/min; `POST /memberships` 10/min; SOS send 5/min. Values come from env through constants evaluated after the env is loaded (not hard-coded in decorators). Handler level, never class level. |
 | BR-81 | Socket.IO CORS allows only the origins in `SOCKET_ALLOWED_ORIGINS` (comma-separated, trimmed; empty = refuse all). |
-| BR-82 | **[DIBUANG di Lite]** Handler protection (no owner / release in Lite; a demoted handler simply loses the right to move the SOS, BR-58, GAPS G-L1). |
+| BR-82 | **[DIBUANG di Lite]** Handler protection (no owner / release in Lite; a demoted handler simply loses the right to move the SOS, BR-58, [GAPS](GAPS.md) G-L1). |
 
 ---
 
@@ -658,8 +658,8 @@ Closed states (RESOLVED, CANCELLED, FALSE_ALARM) set `closedAt` and are final. A
 
 ### 8.2 Tenant isolation and race safety
 - Every community call carries the community id in the path and is checked per BR-31..33.
-- Race safety by conditional `updateMany` (DATA_MODEL N-4).
-- One e2e flow proves the happy path and one cross-tenant check (API_SPEC 14).
+- Race safety by conditional `updateMany` ([DATA_MODEL](DATA_MODEL.md) N-4).
+- One e2e flow proves the happy path and one cross-tenant check ([API_SPEC](API_SPEC.md) 14).
 
 ### 8.3 Pagination
 - Every list is paginated with the shared pagination contract (default 20, max 100).
@@ -678,7 +678,7 @@ Closed states (RESOLVED, CANCELLED, FALSE_ALARM) set `closedAt` and are final. A
 
 ### 8.7 Email
 - `MailService` implements the `OtpSender` port and calls the Resend HTTPS API with `fetch` (no SDK, no SMTP: Railway Hobby blocks outbound SMTP ports). Methods: `sendOtp()`, `sendSosAlert()`, optional `sendJoinApproved()`.
-- `MAIL_PROVIDER` = `resend` | `console`; defaults to `console` when `NODE_ENV !== 'production'`; `console` is refused at boot in production. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (e.g. `"WargaKita <no-reply@averil.tech>"`, verified domain) are required when the provider is `resend`.
+- `MAIL_PROVIDER` = `resend` | `console`; defaults to `console` when `NODE_ENV !== 'production'`; `console` is refused at boot in production. `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (e.g. `"SIGAP <no-reply@averil.tech>"`, verified domain) are required when the provider is `resend`.
 - The console adapter never prints OTP codes. Non-OTP mail is fire-and-log (BR-68).
 - Texts and subjects: 5.9.1. The SOS email never contains GPS, the note or a phone number.
 
@@ -713,7 +713,7 @@ Closed states (RESOLVED, CANCELLED, FALSE_ALARM) set `closedAt` and are final. A
 | `OTP_RESEND_COOLDOWN_SECONDS` | resend cooldown (60) | 8.1 |
 | `MAIL_PROVIDER` | `resend` \| `console` (console refused in production) | 8.7 |
 | `RESEND_API_KEY` | Resend API key, required when provider is `resend` | 8.7 |
-| `RESEND_FROM_EMAIL` | sender, e.g. `"WargaKita <no-reply@averil.tech>"`, required when provider is `resend` | 8.7 |
+| `RESEND_FROM_EMAIL` | sender, e.g. `"SIGAP <no-reply@averil.tech>"`, required when provider is `resend` | 8.7 |
 | `THROTTLE_TTL` | throttle window in seconds (60) | BR-80 |
 | `THROTTLE_LIMIT` | global limit per IP per window (100) | BR-80 |
 | `AUTH_THROTTLE_LIMIT` | limit per IP per window for the six pre-login auth endpoints (10) | BR-80 |
@@ -745,8 +745,8 @@ The full-v1 deviations D-1..D-5 (BFF gate, client IP, socket ticket) are **[PHAS
 | E-3 | **[PHASE 2]** RSVP race | - | - |
 | E-4 | **[PHASE 2]** Application approval race | - | - |
 | E-5 | Two creates for the same RT/RW, or the same RT/RW with a different spelling ("Kel. Suka Maju" vs "sukamaju") | one created, the other 409 | BR-12, BR-14 |
-| E-6 | Two highlights set at once | may briefly leave two highlighted; next highlight fixes it (GAPS G-L4) | BR-36 |
-| E-7 | Double-tap on "send SOS" | second request 409 (open SOS exists); an exact-same-millisecond race may create two (GAPS G-L3) | BR-55 |
+| E-6 | Two highlights set at once | may briefly leave two highlighted; next highlight fixes it ([GAPS](GAPS.md) G-L4) | BR-36 |
+| E-7 | Double-tap on "send SOS" | second request 409 (open SOS exists); an exact-same-millisecond race may create two ([GAPS](GAPS.md) G-L3) | BR-55 |
 | E-8 | Double submit of a join request | second request 409 (already PENDING) | BR-23 |
 | E-9 | **[STRETCH]** Escalation job on restart | claim with `escalatedAt: null` sends once | BR-63 |
 | E-10 | **[PHASE 2]** 3-PENDING race | - | - |
@@ -760,7 +760,7 @@ The full-v1 deviations D-1..D-5 (BFF gate, client IP, socket ticket) are **[PHAS
 | E-18 | Removed member reuses an old token | token still valid for the account, but every community call is 403 | BR-30, BR-31 |
 | E-19 | Last admin tries to leave or demote themselves | 400 'Promote another admin first' / 'A community needs at least one admin' | BR-27 |
 | E-20 | Sender is the only admin and sends SOS | SOS created with `recipientCount = 0`; frontend highlights 112 | BR-62 |
-| E-21 | Handler is demoted or removed while handling an SOS | they can no longer move it (403); the sender can cancel and resend; another admin can mark it false alarm only while SENT (GAPS G-L1) | BR-58, BR-60 |
+| E-21 | Handler is demoted or removed while handling an SOS | they can no longer move it (403); the sender can cancel and resend; another admin can mark it false alarm only while SENT ([GAPS](GAPS.md) G-L1) | BR-58, BR-60 |
 | E-22..E-35 | **[PHASE 2]** (events, uploads, owner, take-over, BFF gate, socket ticket, per-email throttle, duplicates) | - | - |
 | E-36 | **[DIBUANG di Lite]** accept vs demote race | - | - |
 | E-37 | SOS sent while every admin has the app closed | in-app + realtime are missed; email reaches the admins; sender sees `recipientCount` and the 112 button | BR-62, BR-68 |
@@ -848,7 +848,7 @@ Column "Lite": ✓ = built, P2 = **[PHASE 2]**, D = **[DIBUANG di Lite]**, S = *
 | F-HEALTH-1 | ✓ | - | `src/health/` |
 | F-PLATFORM-1 | P2 | BR-78, BR-79 | - |
 
-Lite modules: `auth`, `users`, `communities`, `memberships`, `announcements`, `reports`, `sos-alerts`, `notifications`, `health` (49 REST endpoints + 1 WS namespace, API_SPEC 17).
+Lite modules: `auth`, `users`, `communities`, `memberships`, `announcements`, `reports`, `sos-alerts`, `notifications`, `health` (49 REST endpoints + 1 WS namespace, [API_SPEC](API_SPEC.md) 17).
 Cross-cutting: BR-31..33 (`community-access.helper.ts`, every community module), BR-80 (throttler), BR-68 (mail port).
 
 ---

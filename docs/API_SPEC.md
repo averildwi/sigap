@@ -1,6 +1,6 @@
-# API_SPEC: WargaKita Lite
+# API_SPEC: SIGAP
 
-Source: `docs/PRD.md` rev 5.2 (Lite) and `docs/DATA_MODEL.md`. Full v1 spec archived in `docs/archive/full-v1/API_SPEC.md`; Lite rev 5 in `docs/archive/lite-rev5/API_SPEC.md`; Lite rev 5.1 in `docs/archive/lite-rev5.1/API_SPEC.md`. Items marked **[PHASE 2]** / **[DIBUANG di Lite]** / **[STRETCH]** in the PRD have no endpoint here (see section 10, "Not in Lite").
+Source: `docs/PRD.md` rev 5.2 (Lite) and `docs/DATA_MODEL.md`. Full v1 spec archived in `docs/archive/full-v1/API_SPEC.md`; Lite rev 5 in `docs/archive/lite-rev5/API_SPEC.md`; Lite rev 5.1 in `docs/archive/lite-rev5.1/API_SPEC.md`. Items marked **[PHASE 2]** / **[DIBUANG di Lite]** / **[STRETCH]** in the [PRD](PRD.md) have no endpoint here (see section 10, "Not in Lite").
 
 ## 0. Conventions (pointers only)
 
@@ -11,7 +11,7 @@ Source: `docs/PRD.md` rev 5.2 (Lite) and `docs/DATA_MODEL.md`. Full v1 spec arch
 | Auth endpoints, JWT, OTP, throttle, `:id` pipes, no account leaks | `nest-auth-and-security` (rules 10, 12, 14, 21, 22, 24) |
 | DTO rules, `PaginationDto`, `ToBoolean`, env schema | `nest-validation-and-config` |
 | Prisma usage (select, transactions, no N+1) | `nest-prisma` |
-| Known deviation L-5 (throttle tiers) | PRD 8.13 |
+| Known deviation L-5 (throttle tiers) | [PRD](PRD.md) 8.13 |
 
 All paths are under `/api`. All ids are uuid -> every `:xxxId` uses `ParseUUIDPipe`. Every list query DTO extends `PaginationDto` (`page`, `limit`).
 
@@ -29,7 +29,7 @@ No `@Roles` is used anywhere: `globalRole` exists (skill rule 5 / 22) but no Lit
 
 ### 0.2 Throttle tiers
 
-Per BR-80 and deviation L-5 (PRD 8.13): five named throttlers registered in `ThrottlerModule.forRootAsync`, each `{ name, ttl: THROTTLE_TTL * 1000, limit: <env> }` — `default` (`THROTTLE_LIMIT`, 100), `auth` (`AUTH_THROTTLE_LIMIT`, 5), `sendCode` (`SEND_CODE_THROTTLE_LIMIT`, 3), `join` (`JOIN_THROTTLE_LIMIT`, 10), `sos` (`SOS_THROTTLE_LIMIT`, 5). Notation below: `default`, `auth`, `sendCode`, `join`, `sos`. A tier is switched on per handler with `@ThrottleTier('<name>')` (`SetMetadata` + `skipIf` reading it); `default` applies to every route. Handler level, never class level. Defaults equal `nest-auth-and-security` rule 10 values (a unit test pins them); the venue raises them in `.env` only.
+Per BR-80 and deviation L-5 ([PRD](PRD.md) 8.13): five named throttlers registered in `ThrottlerModule.forRootAsync`, each `{ name, ttl: THROTTLE_TTL * 1000, limit: <env> }` — `default` (`THROTTLE_LIMIT`, 100), `auth` (`AUTH_THROTTLE_LIMIT`, 5), `sendCode` (`SEND_CODE_THROTTLE_LIMIT`, 3), `join` (`JOIN_THROTTLE_LIMIT`, 10), `sos` (`SOS_THROTTLE_LIMIT`, 5). Notation below: `default`, `auth`, `sendCode`, `join`, `sos`. A tier is switched on per handler with `@ThrottleTier('<name>')` (`SetMetadata` + `skipIf` reading it); `default` applies to every route. Handler level, never class level. Defaults equal `nest-auth-and-security` rule 10 values (a unit test pins them); the venue raises them in `.env` only.
 
 ### 0.3 Shared response shapes
 
@@ -55,7 +55,7 @@ Never returned: `passwordHash`, `codeHash`, `regionKey`, `escalatedAt`, `tokenVe
 | C-4 | Skill rule 21: profile is `/auth/me`; profile edit not in the skill table | `PATCH /auth/me`, implemented in `src/users/` (`@Controller('auth/me')`). |
 | C-5 | Skill reference registers with `{ email, password }` only and `role: DEFAULT_ROLE`; Lite adds `name` | Register stores `name`; `role: DEFAULT_ROLE` -> `globalRole: 'USER'` (N-1). |
 | C-7 | ID pipe | All `ParseUUIDPipe`. |
-| C-8 | The skill's mail port sends only OTP-shaped messages | OTP mail uses the skill port unchanged (Indonesian texts of 5.9.1); the SOS email uses a second port `SOS_MAILER` (`SosMailer.sendSosAlert`) in the same `MailModule`, same Resend `fetch` call (PRD 8.7). |
+| C-8 | The skill's mail port sends only OTP-shaped messages | OTP mail uses the skill port unchanged (Indonesian texts of 5.9.1); the SOS email uses a second port `SOS_MAILER` (`SosMailer.sendSosAlert`) in the same `MailModule`, same Resend `fetch` call ([PRD](PRD.md) 8.7). |
 
 ## 1. Module `auth` (`src/auth/`)
 
@@ -172,7 +172,7 @@ Join token (BR-19, BR-20), pure helper `src/memberships/join-token.ts`, unit-tes
 - `w = floor(nowSeconds / 60)`.
 - `token(communityId, w) = base64url(HMAC-SHA256(JOIN_TOKEN_SECRET, "qr:" + communityId + ":" + w)).slice(0, 22)`.
 - `isValid(communityId, token, now)` = matches `w` or `w - 1`, compared with `timingSafeEqual` on equal-length buffers (length mismatch -> false).
-- QR content: `wargakita:join:<communityId>:<token>` (not a URL). Manual fallback: the frontend shows the full `qrContent` string under the QR with a copy button; the join screen accepts the pasted string, parses `communityId` and `token`, and calls `POST /memberships/preview` (R-30). A token alone is not enough.
+- QR content: `sigap:join:<communityId>:<token>` (not a URL). Manual fallback: the frontend shows the full `qrContent` string under the QR with a copy button; the join screen accepts the pasted string, parses `communityId` and `token`, and calls `POST /memberships/preview` (R-30). A token alone is not enough.
 - The same `isValid` helper is used by `POST /memberships/preview` and `POST /memberships`.
 
 | Method | Path | Summary | Guard | Throttle | Success | Feature / BR |
@@ -204,7 +204,7 @@ Every row's `description` names its service check: join-qr / join-requests / mem
   | `token` | string | `@IsString() @Length(22, 22)` | `"pX2fK9...Q"` |
 - **Response** `MessageResponse({ community: CommunitySummary, myMembershipStatus: MembershipStatus | null }, 'Code accepted')`; `HttpCode(200)`.
 - **Errors**: `400 | Invalid or expired code | unknown community or bad/old token (BR-20)`; `400 | validation`; `429`.
-- **Rules**: BR-19, BR-20, BR-80. No transaction, no write. Uses the same `isValid` helper as `POST /memberships`. `communityId` in the body is the scanned target (GAPS G-L6). Description: "Any logged-in user; read-only".
+- **Rules**: BR-19, BR-20, BR-80. No transaction, no write. Uses the same `isValid` helper as `POST /memberships`. `communityId` in the body is the scanned target ([GAPS](GAPS.md) G-L6). Description: "Any logged-in user; read-only".
 
 ### POST /memberships
 - **Request** `CreateMembershipDto`:
@@ -238,7 +238,7 @@ Every row's `description` names its service check: join-qr / join-requests / mem
 - **Request** paths; body `ChangeMembershipRoleDto { role: MembershipRole @IsEnum(MembershipRole) }`, example `{ "role": "ADMIN" }`. This is the action of the endpoint, guarded by `assertAdmin` (G-L7).
 - **Response** `MessageResponse(MembershipView & { user: UserRef }, 'Role updated')`.
 - **Errors**: `403` (member / admin); `404 | Member not found`; `400 | Member is not active`; `400 | A community needs at least one admin | demoting the last ACTIVE ADMIN (BR-27)`.
-- **Rules**: BR-27, BR-29. **Transaction: yes**: read target; if demoting an ADMIN, `membership.count({ communityId, status: ACTIVE, role: ADMIN })` must be > 1; `updateMany({ id, communityId, status: ACTIVE }, { role })` (count 0 -> 400). Same role -> returns unchanged (idempotent). Two admins demoting each other at once can both pass the count (GAPS G-L2).
+- **Rules**: BR-27, BR-29. **Transaction: yes**: read target; if demoting an ADMIN, `membership.count({ communityId, status: ACTIVE, role: ADMIN })` must be > 1; `updateMany({ id, communityId, status: ACTIVE }, { role })` (count 0 -> 400). Same role -> returns unchanged (idempotent). Two admins demoting each other at once can both pass the count ([GAPS](GAPS.md) G-L2).
 
 ### POST /communities/:communityId/memberships/:membershipId/remove
 - **Request** paths; no body.
@@ -366,7 +366,7 @@ Route order: `reports/me` before `reports/:reportId`.
 
 ## 7. Module `sos-alerts` (`src/sos-alerts/`)
 
-"Open" = `SENT`, `ACCEPTED`, `HANDLING`. Every change is a conditional `sosAlert.updateMany` (+ notification) in one `$transaction`; realtime and email after commit. Closing (RESOLVED, CANCELLED, FALSE_ALARM) sets `closedAt`. Notification and email texts: PRD 5.9.1 (`notification-templates.ts`).
+"Open" = `SENT`, `ACCEPTED`, `HANDLING`. Every change is a conditional `sosAlert.updateMany` (+ notification) in one `$transaction`; realtime and email after commit. Closing (RESOLVED, CANCELLED, FALSE_ALARM) sets `closedAt`. Notification and email texts: [PRD](PRD.md) 5.9.1 (`notification-templates.ts`).
 
 | Method | Path | Summary | Guard | Throttle | Success | Feature / BR |
 |---|---|---|---|---|---|---|
@@ -395,7 +395,7 @@ Descriptions: send / cancel / `me` -> "Any ACTIVE member; cancel and `me` restri
   | `longitude?` | number | `@ValidateIf(o => o.latitude !== undefined) @IsLongitude()` | `107.5425` |
 - **Response** `MessageResponse(SosView, 'SOS sent')`; `recipientCount` lets the frontend highlight 112 when 0 (BR-62).
 - **Errors**: `403 | You are not a member of this community`; `409 | You already have an active SOS | open SOS by the caller here (BR-55)`; `400 | validation`; `429`.
-- **Rules**: BR-53, BR-54, BR-55, BR-62, BR-64, BR-68. **Transaction: yes**: `assertMember` (gets `houseBlock`), `findFirst({ communityId, senderId: me, status: { in: open } })` -> 409, list ACTIVE admins except the caller -> `recipientCount`, create, `notification.createMany(SOS_NEW)`. **After commit**: `sos:new` + `notification:new` to the recipients, then **email `SOS_NEW` to each recipient admin via `SosMailer.sendSosAlert()`, fire-and-log** (a failure is logged without the address and never changes the response). The email contains only name, house block, type, label and the app link (`APP_URL`): no GPS, no note, no phone (BR-68, PRD 5.9.1). Description: "Any ACTIVE member".
+- **Rules**: BR-53, BR-54, BR-55, BR-62, BR-64, BR-68. **Transaction: yes**: `assertMember` (gets `houseBlock`), `findFirst({ communityId, senderId: me, status: { in: open } })` -> 409, list ACTIVE admins except the caller -> `recipientCount`, create, `notification.createMany(SOS_NEW)`. **After commit**: `sos:new` + `notification:new` to the recipients, then **email `SOS_NEW` to each recipient admin via `SosMailer.sendSosAlert()`, fire-and-log** (a failure is logged without the address and never changes the response). The email contains only name, house block, type, label and the app link (`APP_URL`): no GPS, no note, no phone (BR-68, [PRD](PRD.md) 5.9.1). Description: "Any ACTIVE member".
 
 ### GET .../sos-alerts/me
 - **Request** query `QueryMySosDto extends PaginationDto { status?: SosStatus @IsOptional() @IsEnum(SosStatus) }`.
@@ -455,7 +455,7 @@ Descriptions: send / cancel / `me` -> "Any ACTIVE member; cancel and `me` restri
 
 Route order: `read-all` and `unread-count` before `:notificationId`.
 
-Every notification row's `title` / `body` / `entityType` comes from the pure function in `src/notifications/notification-templates.ts` (PRD 5.9.1); no service writes literal texts.
+Every notification row's `title` / `body` / `entityType` comes from the pure function in `src/notifications/notification-templates.ts` ([PRD](PRD.md) 5.9.1); no service writes literal texts.
 
 ### GET /notifications
 - **Request** query `QueryNotificationsDto extends PaginationDto { unread?: boolean @IsOptional() @ToBoolean() @IsBoolean(), communityId?: string @IsOptional() @IsUUID('4') }` (`communityId` is a filter, not a write).
@@ -499,7 +499,7 @@ Endpoints / mechanisms (see archive): admin deactivation endpoint (deactivation 
 
 ## 11. Environment variables
 
-Same list as PRD 8.12. Joi in `src/config/env.schema.ts` (project) or nest-common base, and all in `.env.example`.
+Same list as [PRD](PRD.md) 8.12. Joi in `src/config/env.schema.ts` (project) or nest-common base, and all in `.env.example`.
 
 | Variable | Joi | Read by |
 |---|---|---|
@@ -516,7 +516,7 @@ Same list as PRD 8.12. Joi in `src/config/env.schema.ts` (project) or nest-commo
 | `OTP_RESEND_COOLDOWN_SECONDS` | `number().integer().min(0).default(60)` | `OtpService` |
 | `OTP_SENDER` | `string().valid('resend', 'console').default('resend')` (skill reference; `console` refuses production, rule 23) | `MailModule` factory (OTP + SOS) |
 | `RESEND_API_KEY` | `when('OTP_SENDER', { is: 'resend', then: string().required(), otherwise: string().allow('').optional() })` | `ResendOtpSender`, `ResendSosMailer` |
-| `MAIL_FROM` | same rule as `RESEND_API_KEY` (e.g. `"WargaKita <no-reply@averil.tech>"`) | `ResendOtpSender`, `ResendSosMailer` |
+| `MAIL_FROM` | same rule as `RESEND_API_KEY` (e.g. `"SIGAP <no-reply@averil.tech>"`) | `ResendOtpSender`, `ResendSosMailer` |
 | `THROTTLE_TTL` | `number().integer().min(1).default(60)` (seconds; passed as `* 1000` ms) | `ThrottlerModule.forRootAsync` |
 | `THROTTLE_LIMIT` | `number().integer().min(1).default(100)` | `default` throttler |
 | `AUTH_THROTTLE_LIMIT` | `number().integer().min(1).default(5)` | `auth` tier |
@@ -524,7 +524,7 @@ Same list as PRD 8.12. Joi in `src/config/env.schema.ts` (project) or nest-commo
 | `JOIN_THROTTLE_LIMIT` | `number().integer().min(1).default(10)` | `join` tier |
 | `SOS_THROTTLE_LIMIT` | `number().integer().min(1).default(5)` | `sos` tier |
 
-20 variables (same as PRD 8.12). Defaults of the four tier limits are pinned to `nest-auth-and-security` rule 10 by a unit test (L-5).
+20 variables (same as [PRD](PRD.md) 8.12). Defaults of the four tier limits are pinned to `nest-auth-and-security` rule 10 by a unit test (L-5).
 
 Seed only (not in the boot schema): `SEED_DEMO_PASSWORD` (required by the seed script).
 
@@ -669,10 +669,10 @@ None.
 | # | Check | Result |
 |---|---|---|
 | 1 | No `SMTP_`, `nodemailer`, `MAIL_PROVIDER`, `SOCKET_ALLOWED_ORIGINS`, "Gmail" in active docs (outside `docs/archive/`) | **pass**: grep over `docs/PRD.md`, `API_SPEC.md`, `DATA_MODEL.md`, `GAPS.md` finds "SMTP" only in the 8.7 rationale ("Railway Hobby blocks outbound SMTP"). Earlier Lite checks (BFF gate, socket ticket, super admin, owner, `joinCode`, `ipHash`, AuditLog, SosEvent, Cloudinary) still only appear in Phase 2 / Not in Lite text. |
-| 2 | Env list PRD 8.12 = API_SPEC 11 | **pass**: **20** variables in both tables (`DATABASE_URL`, `PORT`, `NODE_ENV`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `FRONTEND_URL`, `APP_URL`, `TRUST_PROXY_HOPS`, `JOIN_TOKEN_SECRET`, `OTP_TTL_MINUTES`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_SENDER`, `RESEND_API_KEY`, `MAIL_FROM`, `THROTTLE_TTL`, `THROTTLE_LIMIT`, `AUTH_THROTTLE_LIMIT`, `SEND_CODE_THROTTLE_LIMIT`, `JOIN_THROTTLE_LIMIT`, `SOS_THROTTLE_LIMIT`) + `SEED_ADMIN_EMAIL`, `SEED_DEMO_PASSWORD` seed-only. |
-| 3 | Endpoint count = 51 REST + 1 WS here, in PRD 11 and in the coverage matrix | **pass**: module tables list 51 REST rows (auth 9, users 1, communities 3, memberships 10, announcements 5, reports 9, sos-alerts 9, notifications 4, health 1) + WS `/realtime`; section 13 maps all of them. |
-| 4 | Every endpoint has a PRD feature and vice versa; F-MEMBERSHIPS-2 is ✓ in PRD 11 | **pass**: section 13 covers every row; F-MEMBERSHIPS-2 -> `POST /memberships/preview`, ✓ in PRD 11. F-NOTIFICATIONS-6 is a side effect (mail calls). |
-| 5 | Every field used here exists in DATA_MODEL | **pass**: `globalRole`, `isActive`, `tokenVersion` added in rev 5.2; preview returns `CommunitySummary` + `Membership.status`; no other new columns. |
+| 2 | Env list [PRD](PRD.md) 8.12 = API_SPEC 11 | **pass**: **20** variables in both tables (`DATABASE_URL`, `PORT`, `NODE_ENV`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `FRONTEND_URL`, `APP_URL`, `TRUST_PROXY_HOPS`, `JOIN_TOKEN_SECRET`, `OTP_TTL_MINUTES`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_SENDER`, `RESEND_API_KEY`, `MAIL_FROM`, `THROTTLE_TTL`, `THROTTLE_LIMIT`, `AUTH_THROTTLE_LIMIT`, `SEND_CODE_THROTTLE_LIMIT`, `JOIN_THROTTLE_LIMIT`, `SOS_THROTTLE_LIMIT`) + `SEED_ADMIN_EMAIL`, `SEED_DEMO_PASSWORD` seed-only. |
+| 3 | Endpoint count = 51 REST + 1 WS here, in [PRD](PRD.md) 11 and in the coverage matrix | **pass**: module tables list 51 REST rows (auth 9, users 1, communities 3, memberships 10, announcements 5, reports 9, sos-alerts 9, notifications 4, health 1) + WS `/realtime`; section 13 maps all of them. |
+| 4 | Every endpoint has a [PRD](PRD.md) feature and vice versa; F-MEMBERSHIPS-2 is ✓ in [PRD](PRD.md) 11 | **pass**: section 13 covers every row; F-MEMBERSHIPS-2 -> `POST /memberships/preview`, ✓ in [PRD](PRD.md) 11. F-NOTIFICATIONS-6 is a side effect (mail calls). |
+| 5 | Every field used here exists in [DATA_MODEL](DATA_MODEL.md) | **pass**: `globalRole`, `isActive`, `tokenVersion` added in rev 5.2; preview returns `CommunitySummary` + `Membership.status`; no other new columns. |
 | 6 | 5.9.1 text table has the same 9 types as BR-66 and `NotificationType`; email table = OTP + `SOS_NEW` only | **pass**: `JOIN_REQUEST`, `JOIN_APPROVED`, `JOIN_REJECTED`, `ANNOUNCEMENT`, `REPORT_NEW`, `REPORT_STATUS`, `SOS_NEW`, `SOS_ACCEPTED`, `SOS_RESOLVED` in all three; no `JOIN_APPROVED` email (R-35). |
 | 7 | No dead references (section, BR, F-, E-, G-, L-, R-) | **pass**: new references (R-33..R-41, BR-83, BR-84, G-L14, G-L15, `APP_URL`, tier names) all resolve; L-1..L-4 and their G-L5/G-L8 counterparts are gone from every active doc. |
 | 8 | No body DTO accepts `role`, `status`, `communityId` (outside path), `handlerId`, `reporterId`, `globalRole`, `isActive` | **pass with documented exceptions (BR-11)**: `communityId` in `POST /memberships` and `POST /memberships/preview` (scanned QR target, G-L6); membership `role` in `PATCH .../role` (the action itself, G-L7). |

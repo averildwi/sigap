@@ -4,8 +4,8 @@ import type { OtpMessage, OtpSender } from './otp-sender';
 
 // Email texts of PRD 5.9.1; the port and adapters stay the skill ones (C-8).
 const SUBJECTS: Record<OtpMessage['purpose'], string> = {
-  EMAIL_VERIFICATION: 'Kode verifikasi WargaKita',
-  PASSWORD_RESET: 'Kode reset password WargaKita',
+  EMAIL_VERIFICATION: 'Kode verifikasi SIGAP',
+  PASSWORD_RESET: 'Kode reset password SIGAP',
 };
 
 /** Sends codes through the Resend HTTP API (no SDK dependency needed). */

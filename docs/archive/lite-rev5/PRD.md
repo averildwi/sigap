@@ -1,4 +1,4 @@
-# PRD: WargaKita Lite, multi-tenant RT/RW community platform
+# PRD: SIGAP, multi-tenant RT/RW community platform
 
 Status: APPROVED, **rev 5 (Lite)**, for a web-developer competition build of 1-2 days. Source: `breakdown-fitur-lengkap-multi-tenant.md` + decisions below. Full v1 (rev 4) is archived in `docs/archive/full-v1/PRD.md`.
 Conventions (envelope, guards, DTOs, Prisma, tests, git) are owned by the skills in `.claude/skills`; this PRD only describes WHAT the product does. Where Lite knowingly departs from a skill, the departure is listed in 8.13 (L-1..L-4).
@@ -18,7 +18,7 @@ Deployment hardening, regions as free text, scope cut for 5 days. Details in `do
 | R-19 | No BFF gate, no client-IP header, no socket ticket. Throttle = standard per-IP `@nestjs/throttler`. Socket.IO uses the JWT in `handshake.auth.token` | 8.4, 8.6, 8.11, 8.13, BR-77..81 |
 | R-20 | No `tokenVersion`, no change-password, no logout-all, no account deletion, no privacy consent field | F-AUTH-6/7, F-USERS-3, BR-4..8, 8.13 L-1 |
 | R-21 | No uploads (report is JSON only), no audit log, no SOS history, no SOS hourly limit, no expiry job | BR-26, 48, 56, 61, 70, 71 |
-| R-22 | Race safety = conditional `updateMany` only | 8.2, DATA_MODEL N-4 |
+| R-22 | Race safety = conditional `updateMany` only | 8.2, [DATA_MODEL](DATA_MODEL.md) N-4 |
 | R-23 | Email via nodemailer + Gmail SMTP: OTP (required) and `SOS_NEW` to recipient admins (fire-and-log); `JOIN_APPROVED` email optional | F-NOTIFICATIONS-6, BR-68, 8.7 |
 | R-24 | Notifications simplified: list, unread count, read, read-all; 9 types | F-NOTIFICATIONS-1..3, BR-65, BR-66 |
 | R-25 | SOS escalation reduced to one level and moved to **[STRETCH]** | F-SOS-7, BR-63 |
@@ -231,7 +231,7 @@ Format: **ID** (breakdown ref) - goal. *Actor.* Acceptance criteria (Given / Whe
 ### 4.4 Module `memberships`
 
 **F-MEMBERSHIPS-1** (JON-01) Show the join QR. *C-ADMIN.*
-- Given I am an admin of the community, when I open the join screen, then I get the QR content (`wargakita:join:<communityId>:<token>`), the token on its own (shown as a typed fallback under the QR) and the seconds left in the current 60 s window.
+- Given I am an admin of the community, when I open the join screen, then I get the QR content (`sigap:join:<communityId>:<token>`), the token on its own (shown as a typed fallback under the QR) and the seconds left in the current 60 s window.
 - Given I am a WARGA or not a member, then I get 403.
 
 **F-MEMBERSHIPS-2** (JON-02, JON-03) **[DIBUANG di Lite]** Separate QR check with a join ticket; replaced by the one-step F-MEMBERSHIPS-3.
@@ -422,7 +422,7 @@ Each rule is one unit-test target. "Open SOS" = status `SENT`, `ACCEPTED` or `HA
 
 | ID | Rule |
 |---|---|
-| BR-19 | Time window `w = floor(unixSeconds / 60)`. QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 characters. The QR content is `wargakita:join:<communityId>:<token>`. No table stores tokens. (Manual 8-digit code: **[PHASE 2]**.) |
+| BR-19 | Time window `w = floor(unixSeconds / 60)`. QR token = base64url(HMAC-SHA256(`JOIN_TOKEN_SECRET`, `"qr:" + communityId + ":" + w`)), first 22 characters. The QR content is `sigap:join:<communityId>:<token>`. No table stores tokens. (Manual 8-digit code: **[PHASE 2]**.) |
 | BR-20 | A token is valid only for window `w` or `w - 1` of the community named in the request, compared with `timingSafeEqual`. An unknown community id and a wrong or older token give the same 400 'Invalid or expired code'. |
 | BR-21 | **[DIBUANG di Lite]** Join ticket. |
 | BR-22 | **[PHASE 2]** Limit of 3 PENDING requests. |
@@ -509,7 +509,7 @@ Each rule is one unit-test target. "Open SOS" = status `SENT`, `ACCEPTED` or `HA
 | BR-79 | **[PHASE 2]** Client IP header. |
 | BR-80 | Throttle per IP (`req.ip` with `trust proxy = TRUST_PROXY_HOPS`): global 100/min; register, login, verify-otp, resend-otp, forgot-password, reset-password 5/min; `POST /memberships` 10/min; SOS send 5/min. Handler level, never class level. |
 | BR-81 | Socket.IO CORS allows only the origins in `SOCKET_ALLOWED_ORIGINS` (comma-separated, trimmed; empty = refuse all). |
-| BR-82 | **[DIBUANG di Lite]** Handler protection (no owner / release in Lite; a demoted handler simply loses the right to move the SOS, BR-58, GAPS G-L1). |
+| BR-82 | **[DIBUANG di Lite]** Handler protection (no owner / release in Lite; a demoted handler simply loses the right to move the SOS, BR-58, [GAPS](GAPS.md) G-L1). |
 
 ---
 
@@ -616,8 +616,8 @@ Closed states (RESOLVED, CANCELLED, FALSE_ALARM) set `closedAt` and are final. A
 
 ### 8.2 Tenant isolation and race safety
 - Every community call carries the community id in the path and is checked per BR-31..33.
-- Race safety by conditional `updateMany` (DATA_MODEL N-4).
-- One e2e flow proves the happy path and one cross-tenant check (API_SPEC 14).
+- Race safety by conditional `updateMany` ([DATA_MODEL](DATA_MODEL.md) N-4).
+- One e2e flow proves the happy path and one cross-tenant check ([API_SPEC](API_SPEC.md) 14).
 
 ### 8.3 Pagination
 - Every list is paginated with the shared pagination contract (default 20, max 100).
@@ -695,8 +695,8 @@ The full-v1 deviations D-1..D-5 (BFF gate, client IP, socket ticket) are **[PHAS
 | E-3 | **[PHASE 2]** RSVP race | - | - |
 | E-4 | **[PHASE 2]** Application approval race | - | - |
 | E-5 | Two creates for the same RT/RW, or the same RT/RW with a different spelling ("Kel. Suka Maju" vs "sukamaju") | one created, the other 409 | BR-12, BR-14 |
-| E-6 | Two highlights set at once | may briefly leave two highlighted; next highlight fixes it (GAPS G-L4) | BR-36 |
-| E-7 | Double-tap on "send SOS" | second request 409 (open SOS exists); an exact-same-millisecond race may create two (GAPS G-L3) | BR-55 |
+| E-6 | Two highlights set at once | may briefly leave two highlighted; next highlight fixes it ([GAPS](GAPS.md) G-L4) | BR-36 |
+| E-7 | Double-tap on "send SOS" | second request 409 (open SOS exists); an exact-same-millisecond race may create two ([GAPS](GAPS.md) G-L3) | BR-55 |
 | E-8 | Double submit of a join request | second request 409 (already PENDING) | BR-23 |
 | E-9 | **[STRETCH]** Escalation job on restart | claim with `escalatedAt: null` sends once | BR-63 |
 | E-10 | **[PHASE 2]** 3-PENDING race | - | - |
@@ -710,7 +710,7 @@ The full-v1 deviations D-1..D-5 (BFF gate, client IP, socket ticket) are **[PHAS
 | E-18 | Removed member reuses an old token | token still valid for the account, but every community call is 403 | BR-30, BR-31 |
 | E-19 | Last admin tries to leave or demote themselves | 400 'Promote another admin first' / 'A community needs at least one admin' | BR-27 |
 | E-20 | Sender is the only admin and sends SOS | SOS created with `recipientCount = 0`; frontend highlights 112 | BR-62 |
-| E-21 | Handler is demoted or removed while handling an SOS | they can no longer move it (403); the sender can cancel and resend; another admin can mark it false alarm only while SENT (GAPS G-L1) | BR-58, BR-60 |
+| E-21 | Handler is demoted or removed while handling an SOS | they can no longer move it (403); the sender can cancel and resend; another admin can mark it false alarm only while SENT ([GAPS](GAPS.md) G-L1) | BR-58, BR-60 |
 | E-22..E-35 | **[PHASE 2]** (events, uploads, owner, take-over, BFF gate, socket ticket, per-email throttle, duplicates) | - | - |
 | E-36 | **[DIBUANG di Lite]** accept vs demote race | - | - |
 | E-37 | SOS sent while every admin has the app closed | in-app + realtime are missed; email reaches the admins; sender sees `recipientCount` and the 112 button | BR-62, BR-68 |

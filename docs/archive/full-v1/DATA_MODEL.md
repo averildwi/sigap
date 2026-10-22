@@ -1,24 +1,24 @@
-# DATA_MODEL: WargaKita v1
+# DATA_MODEL: SIGAP v1
 
-Source: `docs/PRD.md` rev 4. Only v1 features (✓ in PRD section 11). **[PHASE 2]** entities (`Event`, `EventRsvp`, `PushSubscription`, photo/image/document columns) are not in this schema.
+Source: `docs/PRD.md` rev 4. Only v1 features (✓ in [PRD](PRD.md) section 11). **[PHASE 2]** entities (`Event`, `EventRsvp`, `PushSubscription`, photo/image/document columns) are not in this schema.
 Conventions: `nest-prisma` (naming, `@@map`, both timestamps, explicit `onDelete`, uuid ids, Prisma 7 `prisma-client` generator) and `nest-auth-and-security` rule 11 / 22 (`User`, `OtpCode`). Not restated.
 
-Decisions taken from the PRD: ID type `uuid` (`@db.Uuid`, `ParseUUIDPipe`), PostgreSQL, soft delete on `User` only, no Google login (`UserIdentity` absent), no refresh tokens (`RefreshToken` absent).
+Decisions taken from the [PRD](PRD.md): ID type `uuid` (`@db.Uuid`, `ParseUUIDPipe`), PostgreSQL, soft delete on `User` only, no Google login (`UserIdentity` absent), no refresh tokens (`RefreshToken` absent).
 
 ## 1. Design notes (read before the schema)
 
 | # | Note | Why |
 |---|---|---|
-| N-1 | `User.globalRole` / `GlobalRole` (not `role` / `Role`) | `nest-auth-and-security` rule 5: the project has an app-wide role **and** a per-community role. `MembershipRole` lives on `Membership.role`. See conflict C-1 in API_SPEC for how `AuthUser.role` is filled. |
-| N-2 | Owner = `Community.ownerId`, no `Membership.isOwner` column. The API still returns a derived `isOwner` | "Exactly one owner" (BR-27) holds by construction; transfer (BR-74) is one conditional `updateMany` on the community row. PRD section 7 is conceptual; this is the physical form. |
+| N-1 | `User.globalRole` / `GlobalRole` (not `role` / `Role`) | `nest-auth-and-security` rule 5: the project has an app-wide role **and** a per-community role. `MembershipRole` lives on `Membership.role`. See conflict C-1 in [API_SPEC](API_SPEC.md) for how `AuthUser.role` is filled. |
+| N-2 | Owner = `Community.ownerId`, no `Membership.isOwner` column. The API still returns a derived `isOwner` | "Exactly one owner" (BR-27) holds by construction; transfer (BR-74) is one conditional `updateMany` on the community row. [PRD](PRD.md) section 7 is conceptual; this is the physical form. |
 | N-3 | Highlight = `Announcement.highlightCommunityId String? @unique` (set to the community id while highlighted, else null) | "At most one highlight per community" (BR-36) is enforced by the unique index; list order "highlight first" is `orderBy: [{ highlightCommunityId: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }]`. The API returns a derived `isHighlight`. |
 | N-4 | "Only one X while PENDING/open" uses a nullable unique **guard column** that is set while the state lasts and nulled when it ends: `CommunityApplication.pendingRegionKey`, `CommunityApplication.pendingApplicantId`, `SosAlert.openKey` | Prisma schemas cannot declare partial unique indexes, and hand-edited migration SQL is avoided. PostgreSQL allows many NULLs in a unique index. A race loses with P2002 -> 409 via `PrismaExceptionFilter`. |
 | N-5 | Counting limits (3 PENDING joins BR-22, 3 SOS/hour BR-56) and membership/handler checks (BR-82) take a **row lock first** with a conditional write inside `$transaction` (`tx.user.update({ where: { id }, data: { updatedAt: now } })` or `tx.membership.updateMany({ where: { id, status: 'ACTIVE', role: 'ADMIN' }, data: { updatedAt: now } })`), then count / check | Under READ COMMITTED a plain count-then-insert lets parallel requests pass together. The row lock serialises requests for the same user or membership without raw SQL. Details per endpoint in API_SPEC. |
 | N-6 | `Membership.requestedAt` is separate from `createdAt` | The row is reused for every new request (BR-23); expiry (BR-26) counts from the latest request. |
 | N-7 | `regionKey` = `${rt}:${rw}:${norm(village)}:${norm(district)}:${norm(city)}:${norm(province)}` computed by a pure helper (`src/common/helpers/region-key.helper.ts`) | BR-12. Stored on both application and community; unique on `Community`. |
-| N-8 | Notifications point to their entity with `entityType` + `entityId` (no FK) | PRD A-19. Deletes of announcements/reports remove their notifications explicitly in the same transaction (BR-38, BR-50). |
+| N-8 | Notifications point to their entity with `entityType` + `entityId` (no FK) | [PRD](PRD.md) A-19. Deletes of announcements/reports remove their notifications explicitly in the same transaction (BR-38, BR-50). |
 | N-9 | GPS as `Float` (double precision) | Enough for metres; avoids `Decimal` strings in JSON. |
-| N-10 | No job table: SOS escalation state is `SosAlert.escalationLevel` + `nextEscalationAt`; join expiry reads `Membership.requestedAt` | PRD 8.8. |
+| N-10 | No job table: SOS escalation state is `SosAlert.escalationLevel` + `nextEscalationAt`; join expiry reads `Membership.requestedAt` | [PRD](PRD.md) 8.8. |
 | N-11 | No `@map` on columns; table names via `@@map` only | `nest-prisma` rule 2. |
 
 ## 2. Schema (`prisma/schema.prisma`)
@@ -465,7 +465,7 @@ Cardinalities
 | CommunityApplication.reviewer -> User | Restrict | Same; reviewer is a seeded super admin. |
 | Community.owner -> User | Restrict | A community must always have an owner (BR-27). |
 | Community.application -> CommunityApplication | Restrict | The application is the origin record of the tenant; deleting it must not orphan or drop the community. |
-| Membership.user -> User | Restrict | Memberships end by status change, never by delete (PRD 7). |
+| Membership.user -> User | Restrict | Memberships end by status change, never by delete ([PRD](PRD.md) 7). |
 | Membership.community -> Community | Cascade | Tenant delete (not in v1) removes everything of the tenant. |
 | Membership.decidedBy -> User | Restrict | Decision history. |
 | Announcement.community -> Community | Cascade | Tenant content. |
@@ -479,13 +479,13 @@ Cardinalities
 | Notification.user -> User | Cascade | Personal inbox; also deleted explicitly on account deletion (BR-6). |
 | Notification.community -> Community | Cascade | Tenant content. |
 | AuditLog.actor -> User | Restrict | Audit must keep the actor. |
-| AuditLog.community -> Community | SetNull | Audit outlives a deleted tenant (PRD 7). |
+| AuditLog.community -> Community | SetNull | Audit outlives a deleted tenant ([PRD](PRD.md) 7). |
 
 No pure pivot tables: `Membership` carries its own data, so it has both timestamps (`nest-prisma` rule 3).
 
 ## 5. Seed (`prisma/seed.ts`)
 
-Per `nest-auth-and-security` rule 15: reads `SEED_SUPER_ADMIN_EMAIL`, `SEED_SUPER_ADMIN_PASSWORD`, `SEED_SUPER_ADMIN_NAME` from env, fails when missing, creates the super admin only if absent (verified, `globalRole = SUPER_ADMIN`, `privacyConsentAt = null`). Optional demo data (PRD PLT-02) only when `SEED_DEMO=true`: one approved application + community with an owner admin and one WARGA, using `SEED_DEMO_PASSWORD` (required when `SEED_DEMO=true`, no default). Seed-only vars are not in the boot schema.
+Per `nest-auth-and-security` rule 15: reads `SEED_SUPER_ADMIN_EMAIL`, `SEED_SUPER_ADMIN_PASSWORD`, `SEED_SUPER_ADMIN_NAME` from env, fails when missing, creates the super admin only if absent (verified, `globalRole = SUPER_ADMIN`, `privacyConsentAt = null`). Optional demo data ([PRD](PRD.md) PLT-02) only when `SEED_DEMO=true`: one approved application + community with an owner admin and one WARGA, using `SEED_DEMO_PASSWORD` (required when `SEED_DEMO=true`, no default). Seed-only vars are not in the boot schema.
 
 ## 6. Not in this schema (Phase 2)
 

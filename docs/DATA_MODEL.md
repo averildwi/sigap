@@ -1,21 +1,21 @@
-# DATA_MODEL: WargaKita Lite
+# DATA_MODEL: SIGAP
 
-Source: `docs/PRD.md` rev 5.2 (Lite); schema change from rev 5.1: `User` gains `globalRole`, `isActive`, `tokenVersion` (R-33, SPEC_AUDIT #2, #3). Full v1 model archived in `docs/archive/full-v1/DATA_MODEL.md`; Lite rev 5.1 in `docs/archive/lite-rev5.1/DATA_MODEL.md`.
+Source: `docs/PRD.md` rev 5.2 (Lite); schema change from rev 5.1: `User` gains `globalRole`, `isActive`, `tokenVersion` (R-33, [SPEC_AUDIT](SPEC_AUDIT.md) #2, #3). Full v1 model archived in `docs/archive/full-v1/DATA_MODEL.md`; Lite rev 5.1 in `docs/archive/lite-rev5.1/DATA_MODEL.md`.
 Conventions: `nest-prisma` (naming, `@@map`, both timestamps, explicit `onDelete`, uuid ids, Prisma 7 `prisma-client` generator) and `nest-auth-and-security` rule 11 (`OtpCode`) + rule 22 (`User` reference shape). Not restated.
 
-Decisions taken from the PRD: ID type `uuid` (`@db.Uuid`, `ParseUUIDPipe`), PostgreSQL, **no soft delete** (no account deletion in Lite), `globalRole` exists but every Lite account is `USER`, token revocation via `tokenVersion` (skill rules 1-2), no Google login, no refresh tokens.
+Decisions taken from the [PRD](PRD.md): ID type `uuid` (`@db.Uuid`, `ParseUUIDPipe`), PostgreSQL, **no soft delete** (no account deletion in Lite), `globalRole` exists but every Lite account is `USER`, token revocation via `tokenVersion` (skill rules 1-2), no Google login, no refresh tokens.
 
 ## 1. Design notes
 
 | # | Note | Why |
 |---|---|---|
-| N-1 | `User.globalRole` (`GlobalRole`: `ADMIN` \| `USER`, default `USER`) + `isActive Boolean @default(true)` + `tokenVersion Int @default(0)`, exactly the skill rule 22 reference shape renamed per `per-resource-roles.md` (both an app-wide and a per-resource role). No Lite endpoint uses `@Roles`, so `globalRole` stays `USER` and disabling an account is a database-only operation together with `tokenVersion + 1` (PRD E-41); permissions otherwise come only from `Membership.role` (`ADMIN` \| `WARGA`) | `nest-auth-and-security` rules 2, 5, 22, 24: `RoleName = GlobalRole` needs a Prisma enum, `validate()` checks `isActive` and `tokenVersion`. |
-| N-2 | No owner. "At least one ACTIVE ADMIN per community" (BR-27) is checked in the service before demote / remove / leave | PRD rev 5 dropped owner and transfer. |
-| N-3 | Highlight = `Announcement.isHighlight Boolean`. Setting it runs `updateMany({ communityId, isHighlight: true } -> false)` then the create/update, in one `$transaction` | BR-36 Lite. Two parallel highlights can both end up true (GAPS G-L4); accepted. |
+| N-1 | `User.globalRole` (`GlobalRole`: `ADMIN` \| `USER`, default `USER`) + `isActive Boolean @default(true)` + `tokenVersion Int @default(0)`, exactly the skill rule 22 reference shape renamed per `per-resource-roles.md` (both an app-wide and a per-resource role). No Lite endpoint uses `@Roles`, so `globalRole` stays `USER` and disabling an account is a database-only operation together with `tokenVersion + 1` ([PRD](PRD.md) E-41); permissions otherwise come only from `Membership.role` (`ADMIN` \| `WARGA`) | `nest-auth-and-security` rules 2, 5, 22, 24: `RoleName = GlobalRole` needs a Prisma enum, `validate()` checks `isActive` and `tokenVersion`. |
+| N-2 | No owner. "At least one ACTIVE ADMIN per community" (BR-27) is checked in the service before demote / remove / leave | [PRD](PRD.md) rev 5 dropped owner and transfer. |
+| N-3 | Highlight = `Announcement.isHighlight Boolean`. Setting it runs `updateMany({ communityId, isHighlight: true } -> false)` then the create/update, in one `$transaction` | BR-36 Lite. Two parallel highlights can both end up true ([GAPS](GAPS.md) G-L4); accepted. |
 | N-4 | Race safety = **conditional `updateMany`**: the `where` contains the expected current status (and the actor where relevant); `count === 0` means another request won or the state is wrong -> re-read for 404 vs 400 | This is the project's declared answer to `nest-prisma` rule 12 (find-first-then-throw): the conditional write is both the state guard and the race guard, so the extra `findUnique` is merged into the re-read. Used for join approve/reject, SOS accept/handle/resolve/false-alarm/cancel, report status changes, report edit/delete. |
-| N-5 | "One open SOS per sender per community" (BR-55) = `findFirst` before `create`; a double tap racing in the same millisecond may create two (GAPS G-L3) | Lite simplification. |
+| N-5 | "One open SOS per sender per community" (BR-55) = `findFirst` before `create`; a double tap racing in the same millisecond may create two ([GAPS](GAPS.md) G-L3) | Lite simplification. |
 | N-6 | `Membership.requestedAt` is separate from `createdAt` | The row is reused for every new join request (BR-23). |
-| N-7 | `regionKey` = `${rt}:${rw}:${norm(village)}:${norm(district)}:${norm(city)}:${norm(province)}` from pure helpers (`src/common/helpers/region-key.helper.ts`: `normaliseRegionPart(field, text)` per PRD BR-12, `buildRegionKey`); unique on `Community`. `city` must start with `Kota` / `Kabupaten` / `Kab` (DTO check), so its normalised form always carries the marker `kota:` / `kab:` and the two types never collide | BR-12. A collision on create is P2002, rethrown as 409 with the BR-14 message. |
+| N-7 | `regionKey` = `${rt}:${rw}:${norm(village)}:${norm(district)}:${norm(city)}:${norm(province)}` from pure helpers (`src/common/helpers/region-key.helper.ts`: `normaliseRegionPart(field, text)` per [PRD](PRD.md) BR-12, `buildRegionKey`); unique on `Community`. `city` must start with `Kota` / `Kabupaten` / `Kab` (DTO check), so its normalised form always carries the marker `kota:` / `kab:` and the two types never collide | BR-12. A collision on create is P2002, rethrown as 409 with the BR-14 message. |
 | N-8 | Notifications point to their entity with `entityType` + `entityId` (no FK) | Deletes of announcements/reports remove their notifications in the same transaction (BR-38, BR-50). |
 | N-9 | GPS as `Float` | Enough precision, no `Decimal` strings. |
 | N-10 | `SosAlert.escalatedAt` exists only for the **Stretch** escalation (F-SOS-7); unused by the definition of done | Nullable, harmless if the stretch is not built. |
@@ -344,8 +344,8 @@ Per `nest-auth-and-security` rule 15 (no default password, idempotent, not in `s
 - Reads `SEED_ADMIN_EMAIL` and `SEED_DEMO_PASSWORD` from env and **fails when either is missing**. Seed-only, not in the boot schema.
 - Creates (only if the email does not exist yet, never overwriting an existing row or password), all with `emailVerifiedAt = now` and `globalRole = USER`:
   - `SEED_ADMIN_EMAIL` "Pak Budi (Ketua RT)": creates community **RT 001/RW 006**, Kel. Sukamaju, Kec. Cimahi Tengah, Kota Cimahi, Jawa Barat, name "Griya Asri"; ACTIVE ADMIN, houseBlock "Blok A1 No. 1".
-  - `warga1@wargakita.test`, `warga2@wargakita.test`: ACTIVE WARGA with house blocks.
-  - `tamu@wargakita.test`: no membership (for the scan demo).
+  - `warga1@sigap.test`, `warga2@sigap.test`: ACTIVE WARGA with house blocks.
+  - `tamu@sigap.test`: no membership (for the scan demo).
 - Content: 3 announcements (1 highlighted), 4 reports by the WARGA accounts covering `PENDING`, `IN_PROGRESS`, `RESOLVED`, `REJECTED` (with response notes).
 - Hashes with the project's `HashingService` (imported from `src/common/hashing/`), not a re-implementation.
 
