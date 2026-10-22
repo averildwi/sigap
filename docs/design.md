@@ -1,145 +1,215 @@
-# DESIGN.md — SIGAP UI/UX System Specification
-**Product:** SIGAP (Multi-tenant RT/RW Community Platform)  
-**Status:** Approved for Implementation (Competition Build 1–2 Days)  
-**Target Audience:** Indonesian Residents (*Warga*) and Neighborhood Administrators (*Pengurus RT/RW*)  
-**Primary Language:** Bahasa Indonesia  
-**Tech Stack:** Next.js (Frontend on Vercel), NestJS API & PostgreSQL (Railway), Socket.IO  
-
+---
+name: Enterprise Trust & Velocity
+colors:
+  surface: '#f8f9ff'
+  surface-dim: '#cbdbf5'
+  surface-bright: '#f8f9ff'
+  surface-container-lowest: '#ffffff'
+  surface-container-low: '#eff4ff'
+  surface-container: '#e5eeff'
+  surface-container-high: '#dce9ff'
+  surface-container-highest: '#d3e4fe'
+  on-surface: '#0b1c30'
+  on-surface-variant: '#434651'
+  inverse-surface: '#213145'
+  inverse-on-surface: '#eaf1ff'
+  outline: '#747782'
+  outline-variant: '#c4c6d3'
+  surface-tint: '#395ca8'
+  primary: '#00225a'
+  on-primary: '#ffffff'
+  primary-container: '#093782'
+  on-primary-container: '#83a4f5'
+  inverse-primary: '#b1c5ff'
+  secondary: '#455d95'
+  on-secondary: '#ffffff'
+  secondary-container: '#a8c0ff'
+  on-secondary-container: '#354d84'
+  tertiary: '#002061'
+  on-tertiary: '#ffffff'
+  tertiary-container: '#003490'
+  on-tertiary-container: '#84a2ff'
+  error: '#ba1a1a'
+  on-error: '#ffffff'
+  error-container: '#ffdad6'
+  on-error-container: '#93000a'
+  primary-fixed: '#dae2ff'
+  primary-fixed-dim: '#b1c5ff'
+  on-primary-fixed: '#001946'
+  on-primary-fixed-variant: '#1c438e'
+  secondary-fixed: '#d9e2ff'
+  secondary-fixed-dim: '#b0c6ff'
+  on-secondary-fixed: '#001945'
+  on-secondary-fixed-variant: '#2c457c'
+  tertiary-fixed: '#dbe1ff'
+  tertiary-fixed-dim: '#b4c5ff'
+  on-tertiary-fixed: '#00174b'
+  on-tertiary-fixed-variant: '#003ea8'
+  background: '#f8f9ff'
+  on-background: '#0b1c30'
+  surface-variant: '#d3e4fe'
+typography:
+  headline-xl:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 2.25rem
+    fontWeight: '700'
+    lineHeight: 2.75rem
+    letterSpacing: -0.025em
+  headline-xl-mobile:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1.75rem
+    fontWeight: '700'
+    lineHeight: 2.25rem
+    letterSpacing: -0.02em
+  headline-lg:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1.75rem
+    fontWeight: '700'
+    lineHeight: 2.25rem
+    letterSpacing: -0.02em
+  headline-md:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1.25rem
+    fontWeight: '600'
+    lineHeight: 1.75rem
+    letterSpacing: -0.015em
+  headline-sm:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1.125rem
+    fontWeight: '600'
+    lineHeight: 1.5rem
+    letterSpacing: -0.01em
+  body-lg:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 1rem
+    fontWeight: '400'
+    lineHeight: 1.5rem
+    letterSpacing: 0em
+  body-md:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 0.875rem
+    fontWeight: '400'
+    lineHeight: 1.375rem
+    letterSpacing: 0em
+  body-sm:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 0.75rem
+    fontWeight: '400'
+    lineHeight: 1.125rem
+    letterSpacing: 0.01em
+  label-lg:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 0.875rem
+    fontWeight: '600'
+    lineHeight: 1.25rem
+    letterSpacing: -0.005em
+  label-md:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 0.8125rem
+    fontWeight: '500'
+    lineHeight: 1.125rem
+    letterSpacing: 0em
+  label-sm:
+    fontFamily: Plus Jakarta Sans
+    fontSize: 0.75rem
+    fontWeight: '500'
+    lineHeight: 1rem
+    letterSpacing: 0.02em
+rounded:
+  sm: 0.25rem
+  DEFAULT: 0.5rem
+  md: 0.75rem
+  lg: 1rem
+  xl: 1.5rem
+  full: 9999px
+spacing:
+  gutter: 1.5rem
+  gutter-mobile: 1rem
+  margin: 2rem
+  margin-mobile: 1rem
+  space-xs: 0.25rem
+  space-sm: 0.5rem
+  space-md: 1rem
+  space-lg: 1.5rem
+  space-xl: 2.5rem
 ---
 
-## 1. Design Principles & Brand Direction
+## Brand & Style
+The design system reflects institutional authority, technical precision, and modern SaaS efficiency. Tailored for onboarding flows, authentication, and secure registration portals, it inspires confidence and clarity at the critical first point of user conversion.
 
-### A. Core Philosophy
-1. **Civic Trust & Reassurance (*Ketenteraman Warga*):** Mengedepankan rasa aman, transparan, dan inklusif. Antarmuka dirancang untuk warga dengan rentang literasi digital yang beragam.
-2. **Keterbacaan & Kecepatan Respons:** Informasi genting (SOS) dan pengumuman resmi harus langsung terbaca dalam 2 detik pertama tanpa gangguan dekorasi visual berlebihan.
-3. **Pemisahan Jelas Antara Aksi Biasa & Darurat:** Fitur harian menggunakan palet emerald/hijau yang menenangkan, sementara aksi SOS menggunakan warna merah crimson kontras tinggi yang terisolasi secara visual.
-4. **Fidelitas Ketat Terhadap [PRD](PRD.md) Lite:** Tidak ada fitur yang diada-adakan di luar scope (tidak ada upload foto/berkas, tidak ada family card/KK, tidak ada payment/chat langsung).
+The visual style blends **Corporate Modern** with **High-Precision Functionalism**. The aesthetic emphasizes crisp structure, deliberate whitespaces, subtle tonal depth, and tactile focus states that reassure enterprise buyers, technical decision-makers, and business professionals. Extraneous decoration is stripped away in favor of purposeful layout hierarchy, razor-sharp forms, and immediate visual validation.
 
----
+## Colors
+The color architecture establishes an immutable sense of security and professional gravitas through high-contrast structural values:
 
-## 2. Color Palette & Semantic Tokens
+- **Primary (`#093782`)**: Deep Royal Blue acts as the core brand anchor, applied to primary call-to-actions, focused input indicators, and key structural marks.
+- **Secondary / Interactive Dark (`#06265C`)**: Deepened midnight navy reserved strictly for hover, active, and pressed states of primary elements.
+- **Tertiary (`#2563EB`)**: High-visibility cobalt blue used selectively for inline hyperlinks, secondary action accents, and progress metadata.
+- **Neutrals & Surfaces**:
+  - `Surface Base`: `#FFFFFF` for main form cards, modal panels, and field interiors.
+  - `Surface Subdued / Canvas`: `#F8FAFC` for page backdrops, split-screen brand sidebars, and structural framing.
+  - `Text Primary`: `#111827` (slate-black) for headlines, input text, and high-emphasis labels.
+  - `Text Secondary`: `#64748B` (slate-gray) for helper text, placeholders, subheadings, and legal disclaimers.
+  - `Border Default`: `#D1D5DB` for idle input boundaries and quiet dividers.
+  - `Border Focus`: `#093782` paired with an accessible outer focus ring.
+  - `Feedback / Semantic`: Success `#059669`, Error `#DC2626`, Warning `#D97706`.
 
-### Primary Palette (Civic Emerald - Ketenangan Komunitas)
-- `primary-900`: `#052e16` — Text gelap, aksen deep brand
-- `primary-800`: `#166534` — Hover header, batas tegas
-- `primary-700`: `#15803d` — **Primary Brand Accent & CTA Utama**
-- `primary-600`: `#16a34a` — Tombol interaktif, indikator aktif
-- `primary-100`: `#dcfce7` — Background badge status aktif, badge Lite
-- `primary-50`: `#f0fdf4` — Background seleksi, card highlight pengurus
+## Typography
+Typographic scale and letterforms are driven by **Plus Jakarta Sans**, offering geometric rigor with optimized legibility across dense authentication screens.
 
-### Emergency Palette (SOS Crimson & Warning)
-- `emergency-900`: `#7f1d1d` — Header banner SOS aktif
-- `emergency-700`: `#b91c1c` — Border alert dan aksi pembatalan
-- `emergency-600`: `#dc2626` — **Tombol Kirim SOS Darurat & Status Sent**
-- `emergency-100`: `#fee2e2` — Background alert, kartu darurat
-- `emergency-50`: `#fef2f2` — Card background panggilan darurat
+Headlines employ tight negative tracking (`-0.025em` to `-0.015em`) with bold or semi-bold weights to convey firmness. Body copy stays open and readable with neutral tracking, optimizing field labels, form explanations, and terms of service. Labels and metadata prioritize medium to semi-bold weights with precise line-height matching to guarantee alignment next to form inputs, check icons, and status indicators.
 
-### Semantic Status Badges (Sesuai State Machine PRD Bab 6)
-| Status Enum | Label UI (Bahasa) | Text Color | Background | Border |
-|---|---|---|---|---|
-| `ACTIVE` | **Aktif** / **Pengurus** | `#15803d` | `#dcfce7` | `#86efac` |
-| `PENDING` | **Menunggu** | `#b45309` | `#fef3c7` | `#fde68a` |
-| `IN_PROGRESS` / `HANDLING` | **Diproses** / **Ditangani** | `#1d4ed8` | `#dbeafe` | `#93c5fd` |
-| `RESOLVED` | **Selesai** | `#15803d` | `#dcfce7` | `#86efac` |
-| `REJECTED` / `REMOVED` | **Ditolak** / **Dikeluarkan** | `#b91c1c` | `#fee2e2` | `#fca5a5` |
-| `SENT` (SOS) | **Dikirim** | `#dc2626` | `#fee2e2` | `#f87171` |
-| `ACCEPTED` (SOS) | **Diterima** | `#0284c7` | `#e0f2fe` | `#7dd3fc` |
-| `FALSE_ALARM` | **Salah Alarm** | `#64748b` | `#f1f5f9` | `#cbd5e1` |
-| `CANCELLED` | **Dibatalkan** | `#475569` | `#f1f5f9` | `#cbd5e1` |
+## Layout & Spacing
+The layout adheres strictly to an 8px base rhythm with a 4px sub-grid for micro-alignments (e.g., input icons, badges, helper text spacing).
 
-### Neutral & Surface Hierarchy
-- `surface-canvas`: `#f8fafc` (Slate 50) — Latar belakang aplikasi
-- `surface-card`: `#ffffff` (White) — Kartu konten, formulir, modal
-- `surface-subtle`: `#f1f5f9` (Slate 100) — Container input, table header
-- `border-default`: `#e2e8f0` (Slate 200) — Garis pemisah komponen
-- `text-primary`: `#0f172a` (Slate 900) — Judul dan teks utama (kontras tinggi)
-- `text-secondary`: `#475569` (Slate 600) — Subteks, label informasi
-- `text-muted`: `#94a3b8` (Slate 400) — Timestamp, metadata
+- **Page Layout**: Centered standalone card modal (max-width `480px` to `520px`) for clean single-focus flows, or a split 50/50 responsive layout (form on one panel, brand endorsement and social validation on `#093782` or light neutral tint on the other).
+- **Desktop (1024px+)**: Form containers maintain `2.5rem` (`space-xl`) internal padding; standard input row vertical gap is `1.25rem` to `1.5rem`.
+- **Tablet (768px - 1023px)**: Container padding steps down to `2rem`, preserving side gutters of `1.5rem`.
+- **Mobile (<768px)**: Card borders collapse gracefully into edge-to-edge layouts or a slim padded card with `1rem` outer margin, `1.25rem` internal padding, and full-width touch targets.
 
----
+## Elevation & Depth
+Elevation is achieved using quiet tonal layering coupled with multi-stop, soft-diffuse ambient drop shadows. The design system rejects heavy or harsh outlines in favor of structured boundary definition:
 
-## 3. Typography Scale (Plus Jakarta Sans / Inter)
+- **Level 0 (Flat)**: Background plane (`#F8FAFC`). No shadow.
+- **Level 1 (Card / Container)**: Registration container on white (`#FFFFFF`) with subtle border (`1px solid #E2E8F0`) and an ambient shadow: `0 4px 6px -1px rgba(9, 55, 130, 0.04), 0 10px 15px -3px rgba(17, 24, 39, 0.05)`.
+- **Level 2 (Dropdowns / Tooltips / Popovers)**: Password requirement flyouts and country selectors utilize `0 10px 25px -5px rgba(9, 55, 130, 0.08), 0 8px 10px -6px rgba(17, 24, 39, 0.04)`.
+- **Focus Elevation**: Active input states elevate subtly via focus ring illumination: `box-shadow: 0 0 0 3px rgba(9, 55, 130, 0.15)`.
 
-- **Display Heading (`text-2xl` / 24px - 28px, Bold 800):** Judul halaman utama, Nama RT/RW (`RT 001 / RW 006`).
-- **Section Heading (`text-lg` / 18px - 20px, Bold 700):** Judul pengumuman, section laporan, header kartu SOS.
-- **Card Title (`text-base` / 16px, SemiBold 600):** Judul item list, nama warga, kategori laporan.
-- **Body Regular (`text-sm` / 14px, Regular 400 & Medium 500):** Paragraf isi laporan, teks instruksi, isi pengumuman.
-- **Caption / Meta (`text-xs` / 12px, Medium 500 & SemiBold 600):** Tanggal, blok rumah, badge peran, waktu token QR.
+## Shapes
+The shape language establishes a deliberate contrast between macro and micro containers:
 
----
+- **Macro Containers (Main Sign-Up Card)**: Configured with `1.125rem` (18px) corner radius (within the 16px–20px range), delivering a smooth, contemporary silhouette without feeling informal.
+- **Micro UI Elements (Input Fields, Buttons, Social Auth Badges)**: Sized with `0.625rem` (10px) corner radius (balanced within the 8px–12px spectrum), maintaining structural precision and crisp mechanical interaction points.
+- **Micro Badges & Checkboxes**: Small tags and checkboxes use `4px` to `6px` radii for maximum functional clarity.
 
-## 4. Navigation Architecture & Role-Based Layout
+## Components
 
-### Desktop Layout Structure
-- **Persistent Left Sidebar (Width: 260px):**
-  - **Brand Header:** Logo resmi SIGAP + indikator badge 'LITE'.
-  - **Community Switcher Card:** Dropdown interaktif menampilkan komunitas terpilih (`RT 001 / RW 006`), wilayah (`Kel. Suka Maju`), dan badge peran user (`Pengurus (ADMIN)` atau `Warga (WARGA)`).
-  - **Menu List:**
-    1. *Beranda Komunitas* (Dashboard ringkas RT/RW)
-    2. *Pengumuman* (Official broadcasts)
-    3. *Laporan Warga* (Pengaduan & penanganan)
-    4. *Anggota & Pendaftaran* (Admin-only: QR dinamis + antrean persetujuan)
-    5. *Tombol SOS Darurat* (Akses cepat keadaan gawat darurat)
-    6. *Notifikasi* (Inbox pesan dengan unread badge)
-    7. *Akun Saya* (Profil & keamanan sesi)
-  - **Footer Sidebar:** Profil ringkas penanggung jawab & tombol pengaturan cepat.
-- **Top Bar Utility:**
-  - Status konektivitas WebSocket realtime (`Terhubung / Realtime`).
-  - Emergency SOS Fast-Action button (`Kirim SOS Darurat` - Red button).
-  - Bell notifikasi dengan jumlah belum dibaca.
-  - Avatar pengguna dan identitas peran.
+### 1. Primary Buttons
+- **Default**: Background `#093782`, text `#FFFFFF`, radius `10px`, typography `label-lg`, height `48px`, horizontal padding `1.5rem`.
+- **Hover**: Background `#06265C`, smooth transition `150ms cubic-bezier(0.4, 0, 0.2, 1)`.
+- **Focus-Visible**: Outline `2px solid #093782`, outline-offset `2px`.
+- **Disabled**: Background `#E2E8F0`, text `#94A3B8`, cursor `not-allowed`.
 
-### Role Adaptations
-- **Warga (WARGA):**
-  - Menu terfokus pada: Beranda Komunitas, Pengumuman, Laporan Saya (buat & pantau laporan pribadi), Tombol SOS, Notifikasi, Akun.
-  - Akses fitur administratif dinonaktifkan (403 guard di backend).
-- **Pengurus (ADMIN):**
-  - Akses penuh ke antrean pendaftaran warga (`PENDING`), daftar warga aktif, ubah peran anggota, seluruh laporan komunitas (status update), serta monitor dan respon pusat SOS.
+### 2. Secondary & Social Auth Buttons (Google, SSO, GitHub)
+- **Structure**: Background `#FFFFFF`, border `1px solid #D1D5DB`, text `#111827`, height `48px`, radius `10px`.
+- **Hover**: Background `#F8FAFC`, border color `#94A3B8`.
+- **Active**: Background `#F1F5F9`.
 
----
+### 3. Text Input Fields
+- **Container**: Height `46px`, background `#FFFFFF`, border `1px solid #D1D5DB`, border-radius `10px`, padding `0 14px`, text color `#111827`, typography `body-md`.
+- **Placeholder**: Color `#64748B`.
+- **Focus**: Border color `#093782`, box-shadow `0 0 0 3px rgba(9, 55, 130, 0.15)`.
+- **Error State**: Border color `#DC2626`, box-shadow `0 0 0 3px rgba(220, 38, 38, 0.15)`, trailing alert icon.
+- **Password Toggle**: Inline trailing clickable icon button (`#64748B` default, `#111827` active).
 
-## 5. Key Modules & Screen Implementation Details
+### 4. Checkboxes & Radio Controls
+- **Size**: 18px × 18px, border-radius `4px` (checkbox) / `50%` (radio), border `1.5px solid #D1D5DB`.
+- **Checked**: Background `#093782`, border-color `#093782`, crisp white checkmark icon.
+- **Focus**: Ring `3px rgba(9, 55, 130, 0.2)`.
 
-### A. Beranda Komunitas (Community Hub)
-- **Kartu Identitas Wilayah:** Format label resmi `RT001/RW006`, kelurahan, kecamatan, kota/kabupaten, dan total warga aktif.
-- **Banner Pengumuman Utama (Disematkan):** Tepat 1 pengumuman ter-highlight dengan latar kontras lembut, status pin, dan link detail.
-- **Aksi Cepat Warga & Pengurus:** Pintasan lapor masalah, buka QR pendaftaran, dan tombol SOS darurat.
-- **Feed Pengumuman & Ringkasan Laporan:** List ringkas pengumuman terbaru dan status terkini pengaduan warga.
+### 5. Password Strength Meter & Requirement List
+- **Bar Segment**: Height `4px`, radius `2px`, segmented into 4 progress steps transitioning from `#EF4444` (weak) to `#F59E0B` (medium) to `#059669` (strong).
+- **Rule Items**: Typography `body-sm`, icon size `14px`; unfulfilled `#64748B` with empty ring, fulfilled `#059669` with check icon.
 
-### B. Keanggotaan & Dynamic QR Hub (F-MEMBERSHIPS-1 .. 11)
-- **Dynamic QR Window (F-MEMBERSHIPS-1):**
-  - Menampilkan QR dinamis dengan rotasi token per 60 detik (`HMAC-SHA256`).
-  - Timer visual countdown (*"Berlaku 42 detik lagi"*).
-  - Fallback manual string penuh: `sigap:join:<communityId>:<token>` lengkap dengan tombol "Salin Teks QR".
-- **Antrean Pendaftaran (F-MEMBERSHIPS-4, 5, 6):**
-  - Kartu pemohon menampilkan nama, email, blok rumah, dan waktu submit.
-  - Aksi cepat satu klik: *Setujui (Warga)* (hijau) & *Tolak* (merah).
-- **Direktori Warga & Pengelolaan Peran (F-MEMBERSHIPS-10, 11):**
-  - Tabel responsif dengan pencarian nama & filter blok rumah.
-  - Validasi aturan [PRD](PRD.md): Pengurus terakhir tidak dapat dikeluarkan atau demote dirinya sendiri.
-
-### C. Laporan Warga Komunitas (F-REPORTS-1 .. 7)
-- **Tampilan Split-View (Daftar & Detail Respons):**
-  - Panel kiri: Daftar laporan dengan badge kategori (`Infrastruktur`, `Keamanan`, `Kebersihan`, `Sosial`, `Lainnya`) dan status.
-  - Panel kanan: Detail pengaduan, nama pelapor, blok rumah, serta widget perubahan status untuk pengurus (`Diproses`, `Selesai`, `Ditolak`).
-  - Catatan tanggapan pengurus wajib diisi (minimal 5 karakter) jika status ditolak.
-  - Notice privasi: Laporan privat, hanya dilihat pelapor dan pengurus RT.
-
-### D. Pusat Tanggap Darurat SOS (F-SOS-1 .. 9)
-- **Siklus Status Respon Berjenjang:**
-  - `Dikirim` (Sent) ➔ `Diterima` (Accepted oleh Pengurus) ➔ `Ditangani` (Handling aktif) ➔ `Selesai` (Resolved).
-- **Incoming Emergency Dispatch Card:**
-  - Penanda jenis SOS: `Medis`, `Kebakaran`, `Kriminal`, `Lainnya`.
-  - Snapshot blok rumah pengirim yang tidak dapat diubah setelah dikirim.
-  - Koordinat GPS (opsional) dengan peta visual radius lingkungan RT.
-  - Tombol aksi handler: *Tandai Selesai*, *Tandai Salah Alarm*, dan *Hubungi Warga*.
-- **Integrasi Fallback Nasional 112 (SOS-07):**
-  - Banner peringatan darurat terintegrasi untuk menghubungi Layanan Darurat 112 / Ambulans 118 jika pengurus offline atau keadaan mengancam jiwa.
-
----
-
-## 6. Edge Cases & Form Handling Standard
-1. **Double Submit SOS / Join:** Proteksi tombol disable seketika saat diklik dengan indikator proses.
-2. **Token QR Kedaluwarsa:** Error toast deskriptif mengarahkan warga memindai ulang layar pengurus.
-3. **Komunitas Duplikat (BR-12, BR-14):** Form pembuatan komunitas memvalidasi key normalisasi wilayah dan menampilkan link bergabung via QR jika wilayah sudah terdaftar.
-4. **Pengurus Terakhir Keluar (BR-27):** Tombol keluar/demote dinonaktifkan dengan tooltip peringatan *"Promosikan pengurus lain terlebih dahulu"*.
+### 6. Sign-Up Card Container
+- **Surface**: Background `#FFFFFF`, border `1px solid #E2E8F0`, border-radius `18px`, padding `2.5rem`, Level 1 ambient elevation. Includes an optional subtle enterprise security reassurance footer (e.g., SOC2 / 256-bit SSL encrypted lock badge).
