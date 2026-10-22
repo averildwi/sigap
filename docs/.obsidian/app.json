@@ -1,0 +1,13 @@
+{
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "relative",
+  "useMarkdownLinks": true,
+  "newFileLocation": "current",
+  "attachmentFolderPath": "attachments",
+  "defaultViewMode": "source",
+  "showUnsupportedFiles": false,
+  "promptDelete": true,
+  "readableLineLength": true,
+  "showLineNumber": true,
+  "userIgnoreFilters": []
+}
